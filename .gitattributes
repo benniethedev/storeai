@@ -1,0 +1,19 @@
+* text=auto eol=lf
+
+# Keep shell/Python scripts LF on Windows too
+*.sh       text eol=lf
+*.bash     text eol=lf
+
+# Lockfile & SQL migrations should not be reformatted by diff tools
+pnpm-lock.yaml -diff -merge linguist-generated=true
+**/drizzle/*.sql linguist-generated=true
+
+# Binary types
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.ico      binary
+*.pdf      binary
+*.zip      binary
+*.node     binary

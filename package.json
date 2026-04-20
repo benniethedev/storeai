@@ -1,0 +1,33 @@
+{
+  "name": "storeai",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @storeai/web dev",
+    "build": "pnpm --filter @storeai/web build",
+    "start": "pnpm --filter @storeai/web start",
+    "worker": "pnpm --filter @storeai/worker run dev",
+    "worker:start": "pnpm --filter @storeai/worker run start",
+    "infra:up": "docker compose -f infrastructure/docker/docker-compose.yml --env-file .env up -d",
+    "infra:down": "docker compose -f infrastructure/docker/docker-compose.yml --env-file .env down",
+    "infra:logs": "docker compose -f infrastructure/docker/docker-compose.yml --env-file .env logs -f",
+    "infra:wait": "bash infrastructure/scripts/wait-for-infra.sh",
+    "db:generate": "pnpm --filter @storeai/db generate",
+    "db:migrate": "pnpm --filter @storeai/db migrate",
+    "db:seed": "pnpm --filter @storeai/db seed",
+    "db:studio": "pnpm --filter @storeai/db studio",
+    "reset": "bash infrastructure/scripts/reset.sh",
+    "test": "pnpm --filter @storeai/web test",
+    "test:e2e": "pnpm --filter @storeai/web test:e2e",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  }
+}

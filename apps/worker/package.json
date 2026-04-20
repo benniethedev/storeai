@@ -1,0 +1,22 @@
+{
+  "name": "@storeai/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@storeai/db": "workspace:*",
+    "@storeai/queue": "workspace:*",
+    "@storeai/shared": "workspace:*",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  }
+}
