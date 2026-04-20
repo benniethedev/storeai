@@ -2,7 +2,11 @@
 
 A self-hosted, multi-tenant backend platform for web apps. Supabase/Firebase-style feature set — auth, workspaces, API keys, CRUD APIs, file storage, background jobs, audit + usage logs, and an admin dashboard — all in one Next.js app backed by PostgreSQL, Redis, and MinIO.
 
-**Status:** v1 runs locally on macOS and passes 18 Vitest integration tests + 2 Playwright e2e tests. Designed to be self-hostable on Ubuntu via Docker Compose.
+**Status:** v1 runs locally on macOS and passes 21 Vitest integration tests + 2 Playwright e2e tests. Designed to be self-hostable on Ubuntu via Docker Compose.
+
+- **Repo:** https://github.com/benniethedev/storeai
+- **License:** MIT (see `LICENSE`)
+- **Contributing:** see `CONTRIBUTING.md`
 
 ---
 
@@ -39,12 +43,12 @@ infrastructure/
 **One command — clone, bootstrap, run:**
 
 ```bash
-git clone <your-fork-url> storeai && cd storeai
+git clone https://github.com/benniethedev/storeai.git && cd storeai
 pnpm bootstrap      # installs deps, starts Postgres/Redis/MinIO, migrates, seeds
 pnpm start:all      # runs the Next.js app + the BullMQ worker together
 ```
 
-That's it — open http://localhost:3000 and sign in with `admin@storeai.local` / `admin12345`.
+That's it — open http://localhost:3000 and sign in with the credentials the wizard printed at the end of `pnpm bootstrap` (or set your own interactively).
 
 <details>
 <summary>What <code>pnpm bootstrap</code> does (the old 5-step flow, automated)</summary>
@@ -71,11 +75,7 @@ pnpm worker          # in another
 ```
 </details>
 
-Seeded credentials:
-
-- **Email:** `admin@storeai.local`
-- **Password:** `admin12345`
-- **Workspace:** `demo`
+> The old defaults (`admin@storeai.local` / `admin12345`) no longer exist — `pnpm db:seed` refuses to run against a weak placeholder password. Use whatever the wizard set for you (or whatever you put in `SEED_ADMIN_PASSWORD`).
 
 ## Everyday commands
 
@@ -142,14 +142,32 @@ curl -H "Authorization: Bearer $KEY" \
 ## Tests
 
 ```bash
-pnpm test       # Vitest — 18 integration tests against real Postgres/Redis/MinIO
+pnpm test       # Vitest — 21 integration tests against real Postgres/Redis/MinIO
 pnpm test:e2e   # Playwright — full signup → API key → CRUD flow in the browser
 ```
 
-See `apps/web/tests/` for the suites. Covered areas: auth flows, tenant isolation, RBAC, API key auth + revocation, CRUD, file upload permissions, audit/usage log creation, queue job execution, dashboard flows.
+See `apps/web/tests/` for the suites. Covered areas: auth flows, tenant isolation, RBAC, API key auth + revocation, CRUD, file upload permissions, audit/usage log creation, queue job execution, member owner-protection, dashboard flows.
+
+## Contributing
+
+PRs welcome. Short version:
+
+1. Fork → create a branch off `main` (`feat/…`, `fix/…`, `docs/…`).
+2. `pnpm bootstrap` once, then `pnpm test` + `pnpm test:e2e` before pushing — both suites must pass.
+3. Keep the change small and scoped; open an issue first if it's anywhere near "redesign".
+4. Open a PR with a brief description of **what** and **why** (the diff shows the how).
+
+Full guidelines, test conventions, and the non-goals for v1 are in [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
+Found a security issue? Don't open a public issue — see the "Reporting security issues" section in `CONTRIBUTING.md`.
+
+## License
+
+MIT — see [`LICENSE`](./LICENSE). You can use this commercially, modify it, and self-host it. Attribution appreciated but not required.
 
 ## See also
 
-- `BUILD_LOG.md` — the full design plan and what was built each phase
-- `.env.example` — all environment variables
-- `infrastructure/docs/` — extra notes
+- [`BUILD_LOG.md`](./BUILD_LOG.md) — the full design plan and what was built each phase
+- [`.env.example`](./.env.example) — all environment variables
+- [`infrastructure/docs/architecture.md`](./infrastructure/docs/architecture.md) — architecture deep-dive
+- [`infrastructure/docs/production-hardening.md`](./infrastructure/docs/production-hardening.md) — Ubuntu deployment checklist
