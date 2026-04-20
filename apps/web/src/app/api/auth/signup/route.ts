@@ -13,11 +13,16 @@ export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-    await rateLimit({ key: `signup:${ip ?? "unknown"}`, limit: 10, windowSeconds: 60 });
-
     const body = await req.json();
     const input = signupSchema.parse(body);
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+    const { createHash } = await import("node:crypto");
+    const emailKey = createHash("sha256").update(input.email).digest("hex").slice(0, 16);
+    const slugKey = createHash("sha256").update(input.tenantSlug).digest("hex").slice(0, 16);
+    // IP-based (spoofable) + per-email + per-tenant-slug (non-spoofable).
+    await rateLimit({ key: `signup:ip:${ip ?? "unknown"}`, limit: 10, windowSeconds: 60 });
+    await rateLimit({ key: `signup:email:${emailKey}`, limit: 5, windowSeconds: 300 });
+    await rateLimit({ key: `signup:slug:${slugKey}`, limit: 5, windowSeconds: 300 });
     const db = getDb();
 
     const existing = await db.select().from(users).where(eq(users.email, input.email)).limit(1);

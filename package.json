@@ -20,6 +20,8 @@
     "db:migrate": "pnpm --filter @storeai/db migrate",
     "db:seed": "pnpm --filter @storeai/db seed",
     "db:studio": "pnpm --filter @storeai/db studio",
+    "bootstrap": "bash infrastructure/scripts/bootstrap.sh",
+    "start:all": "bash infrastructure/scripts/start-all.sh",
     "reset": "bash infrastructure/scripts/reset.sh",
     "test": "pnpm --filter @storeai/web test",
     "test:e2e": "pnpm --filter @storeai/web test:e2e",

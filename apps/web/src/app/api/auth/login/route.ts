@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb, users, memberships } from "@storeai/db";
-import { verifyPassword, createSession, revokeSessionByToken } from "@storeai/auth";
+import { hashPassword, verifyPassword, createSession, revokeSessionByToken } from "@storeai/auth";
 import { loginSchema } from "@storeai/shared";
 import { UnauthorizedError } from "@storeai/shared/errors";
 import { handleError, ok } from "@/lib/http";
@@ -11,22 +12,39 @@ import { rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
+// A real argon2id hash, generated once, used as a constant-time decoy so
+// unknown-email requests still pay the same CPU cost as known-email requests.
+let decoyHashPromise: Promise<string> | null = null;
+function getDecoyHash(): Promise<string> {
+  if (!decoyHashPromise) decoyHashPromise = hashPassword("decoy-does-not-match-anything");
+  return decoyHashPromise;
+}
+
+function emailKey(email: string): string {
+  return createHash("sha256").update(email.toLowerCase()).digest("hex").slice(0, 16);
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-    await rateLimit({ key: `login:${ip ?? "unknown"}`, limit: 20, windowSeconds: 60 });
-
     const body = await req.json();
     const input = loginSchema.parse(body);
-    const db = getDb();
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
 
+    // Per-IP bucket (spoofable behind untrusted XFF, but still useful).
+    await rateLimit({ key: `login:ip:${ip ?? "unknown"}`, limit: 30, windowSeconds: 60 });
+    // Per-account bucket — NOT spoofable; caps brute-force on a single user.
+    await rateLimit({ key: `login:email:${emailKey(input.email)}`, limit: 10, windowSeconds: 60 });
+
+    const db = getDb();
     const rows = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
     const user = rows[0];
-    if (!user) throw new UnauthorizedError("Invalid email or password");
-    const okPwd = await verifyPassword(user.passwordHash, input.password);
-    if (!okPwd) throw new UnauthorizedError("Invalid email or password");
 
-    // Pick any membership as default active tenant
+    // Always run password verification to keep wall-clock time flat.
+    const hashToCheck = user?.passwordHash ?? (await getDecoyHash());
+    const passwordOk = await verifyPassword(hashToCheck, input.password);
+
+    if (!user || !passwordOk) throw new UnauthorizedError("Invalid email or password");
+
     const firstMem = await db
       .select()
       .from(memberships)
@@ -34,7 +52,6 @@ export async function POST(req: NextRequest) {
       .limit(1);
     const activeTenantId = firstMem[0]?.tenantId ?? null;
 
-    // revoke prior session sent in cookies if present
     const existingCookie = req.cookies.get(env.SESSION_COOKIE_NAME)?.value;
     if (existingCookie) await revokeSessionByToken(existingCookie).catch(() => {});
 

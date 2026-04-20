@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { and, desc, asc, eq, sql } from "drizzle-orm";
 import { getDb, records, projects } from "@storeai/db";
 import { createRecordSchema, paginationSchema } from "@storeai/shared";
@@ -19,9 +20,13 @@ async function assertProjectInTenant(tenantId: string, projectId: string) {
   if (!rows[0]) throw new NotFoundError("Project not found");
 }
 
+const projectIdQuerySchema = z.string().uuid().optional();
+
 export const GET = tenantRoute({}, async ({ req, ctx }) => {
   const url = new URL(req.url);
-  const projectId = url.searchParams.get("projectId");
+  const projectId = projectIdQuerySchema.parse(
+    url.searchParams.get("projectId") ?? undefined,
+  );
   const { page, pageSize, sort } = paginationSchema.parse({
     page: url.searchParams.get("page") ?? undefined,
     pageSize: url.searchParams.get("pageSize") ?? undefined,
@@ -29,7 +34,10 @@ export const GET = tenantRoute({}, async ({ req, ctx }) => {
   });
   const db = getDb();
   const conds = [eq(records.tenantId, ctx.tenantId)];
-  if (projectId) conds.push(eq(records.projectId, projectId));
+  if (projectId) {
+    await assertProjectInTenant(ctx.tenantId, projectId);
+    conds.push(eq(records.projectId, projectId));
+  }
 
   const orderCol = sort.includes("updated_at") ? records.updatedAt : records.createdAt;
   const orderFn = sort.startsWith("-") ? desc : asc;

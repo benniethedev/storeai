@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb, apiKeys, type ApiKey } from "@storeai/db";
-import { randomToken, sha256Hex, constantTimeEqual } from "./tokens.js";
+import { randomToken, hmacHex, constantTimeEqual } from "./tokens.js";
 
 export const API_KEY_PUBLIC_PREFIX = "sk_";
 const PREFIX_LENGTH = 10; // after "sk_", so full visible prefix is 13 chars
@@ -31,7 +31,7 @@ export async function createApiKey(args: {
   const prefixRaw = randomAlphanum(PREFIX_LENGTH);
   const prefix = `${API_KEY_PUBLIC_PREFIX}${prefixRaw}`;
   const plaintext = `${prefix}_${secret}`;
-  const secretHash = sha256Hex(secret);
+  const secretHash = hmacHex(secret);
   const db = getDb();
   const [row] = await db
     .insert(apiKeys)
@@ -83,7 +83,7 @@ export async function resolveApiKey(bearer: string): Promise<ResolvedApiKey | nu
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  const hashed = sha256Hex(secret);
+  const hashed = hmacHex(secret);
   if (!constantTimeEqual(hashed, row.secretHash)) return null;
   // update last_used_at (best effort)
   await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, row.id));

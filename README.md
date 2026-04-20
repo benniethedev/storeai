@@ -25,34 +25,51 @@ infrastructure/
 
 ## Prerequisites
 
-- macOS (tested on Darwin 24.5)
-- Node.js 20+ (tested on 24.1)
-- pnpm 10+
-- Docker Desktop running
+- **OS:** macOS or Linux (developed on macOS Darwin 24.5; production target is Ubuntu — see `infrastructure/docs/production-hardening.md`)
+- **Node.js 20+** (tested on 24.1)
+- **pnpm 10+**
+- **Docker** with the Compose v2 plugin
+  - macOS: Docker Desktop
+  - Ubuntu: `docker-ce` + `docker-compose-plugin` (the `docker compose` CLI is identical)
+
+> Nothing in the stack is mac-specific. The same commands work on an Ubuntu server.
 
 ## First-time setup
 
+**One command — clone, bootstrap, run:**
+
 ```bash
-# 1. Install deps
-pnpm install
-
-# 2. Copy env
-cp .env.example .env
-
-# 3. Start Postgres + Redis + MinIO
-pnpm infra:up
-pnpm infra:wait
-
-# 4. Migrate + seed
-pnpm db:migrate
-pnpm db:seed
-
-# 5. Run the app
-pnpm dev       # http://localhost:3000
-
-# Optional: start the background worker in another terminal
-pnpm worker
+git clone <your-fork-url> storeai && cd storeai
+pnpm bootstrap      # installs deps, starts Postgres/Redis/MinIO, migrates, seeds
+pnpm start:all      # runs the Next.js app + the BullMQ worker together
 ```
+
+That's it — open http://localhost:3000 and sign in with `admin@storeai.local` / `admin12345`.
+
+<details>
+<summary>What <code>pnpm bootstrap</code> does (the old 5-step flow, automated)</summary>
+
+1. Preflight-checks Node 20+, pnpm, Docker, and a running Docker daemon
+2. Copies `.env.example` → `.env` if missing
+3. Generates a strong random `AUTH_SECRET` (the example default is only a placeholder)
+4. `pnpm install`
+5. `docker compose up -d` for Postgres, Redis, MinIO, and waits until all three are healthy
+6. Applies Drizzle migrations
+7. Seeds the demo admin + workspace
+
+Re-running `pnpm bootstrap` is safe — it skips anything that's already done.
+
+If you'd rather run the steps by hand:
+
+```bash
+pnpm install
+cp .env.example .env
+pnpm infra:up && pnpm infra:wait
+pnpm db:migrate && pnpm db:seed
+pnpm dev             # in one terminal
+pnpm worker          # in another
+```
+</details>
 
 Seeded credentials:
 

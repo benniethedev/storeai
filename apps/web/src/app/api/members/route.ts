@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getDb, memberships, users } from "@storeai/db";
 import { inviteMemberSchema } from "@storeai/shared";
-import { ConflictError, NotFoundError } from "@storeai/shared/errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
@@ -28,6 +28,9 @@ export const GET = tenantRoute({ requireRole: "admin" }, async ({ ctx }) => {
 export const POST = tenantRoute({ requireRole: "admin" }, async ({ req, ctx }) => {
   const body = await req.json();
   const input = inviteMemberSchema.parse(body);
+  if (input.role === "owner" && ctx.role !== "owner") {
+    throw new ForbiddenError("Only owners can grant owner role");
+  }
   const db = getDb();
   const user = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
   if (!user[0])

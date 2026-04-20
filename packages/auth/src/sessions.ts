@@ -1,6 +1,6 @@
 import { and, eq, gt } from "drizzle-orm";
 import { getDb, sessions, users, memberships, type User, type Session } from "@storeai/db";
-import { randomToken, sha256Hex } from "./tokens.js";
+import { randomToken, hmacHex } from "./tokens.js";
 
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -18,7 +18,7 @@ export async function createSession(args: {
 }): Promise<CreatedSession> {
   const token = randomToken(32);
   const csrfToken = randomToken(24);
-  const tokenHash = sha256Hex(token);
+  const tokenHash = hmacHex(token);
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
   const db = getDb();
   const [session] = await db
@@ -38,7 +38,7 @@ export async function createSession(args: {
 }
 
 export async function revokeSessionByToken(token: string): Promise<void> {
-  const tokenHash = sha256Hex(token);
+  const tokenHash = hmacHex(token);
   const db = getDb();
   await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash));
 }
@@ -55,7 +55,7 @@ export interface ResolvedSession {
 
 export async function resolveSession(token: string): Promise<ResolvedSession | null> {
   if (!token) return null;
-  const tokenHash = sha256Hex(token);
+  const tokenHash = hmacHex(token);
   const db = getDb();
   const rows = await db
     .select({ session: sessions, user: users })
