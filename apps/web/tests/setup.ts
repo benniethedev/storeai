@@ -18,7 +18,7 @@ function loadEnv() {
   }
 }
 loadEnv();
-process.env.NODE_ENV = "test";
+Object.assign(process.env, { NODE_ENV: "test" });
 
 beforeAll(async () => {
   const { getDb } = await import("@storeai/db");

@@ -50,6 +50,8 @@ pnpm start:all      # runs the Next.js app + the BullMQ worker together
 
 That's it — open http://localhost:3000 and sign in with the credentials the wizard printed at the end of `pnpm bootstrap` (or set your own interactively).
 
+> **Deploying on a VPS?** The dev and prod servers bind to `0.0.0.0` by default, so external access on port 3000 works out of the box — just open the port in your firewall. Once you have a domain, jump to **[Deploy with a custom domain + HTTPS](#deploy-with-a-custom-domain--https)** for a one-command flow that installs Caddy, issues a Let's Encrypt cert, and switches to production mode.
+
 <details>
 <summary>What <code>pnpm bootstrap</code> does (the old 5-step flow, automated)</summary>
 
@@ -91,7 +93,9 @@ pnpm worker          # in another
 | `pnpm dev` | Next.js **dev** server on :3000 (HMR, no build needed — local dev only) |
 | `pnpm build` | Build the Next.js **production** bundle (required before `pnpm start`) |
 | `pnpm start` | Run the production server on :3000 (run `pnpm build` first) |
-| `pnpm worker` | Run the BullMQ worker |
+| `pnpm worker` | Run the BullMQ worker (dev mode) |
+| `pnpm worker:start` | Run the worker in production mode |
+| `pnpm deploy:domain` | Attach a custom domain + Let's Encrypt HTTPS on Ubuntu/Debian (installs Caddy, writes systemd units) |
 | `pnpm test` | Run Vitest integration suite |
 | `pnpm test:e2e` | Run Playwright end-to-end tests |
 | `pnpm reset` | Wipe volumes + re-migrate + re-seed |
@@ -149,6 +153,39 @@ pnpm test:e2e   # Playwright — full signup → API key → CRUD flow in the br
 ```
 
 See `apps/web/tests/` for the suites. Covered areas: auth flows, tenant isolation, RBAC, API key auth + revocation, CRUD, file upload permissions, audit/usage log creation, queue job execution, member owner-protection, dashboard flows.
+
+## Deploy with a custom domain + HTTPS
+
+Once your Ubuntu/Debian host is up and `pnpm bootstrap` has run, one command attaches a domain, installs Caddy, auto-provisions a Let's Encrypt cert, switches the app into production mode, and registers systemd services so everything restarts on reboot:
+
+```bash
+pnpm deploy:domain --domain app.example.com --email you@example.com
+```
+
+What it does (idempotent — safe to re-run):
+
+1. Preflights OS (Ubuntu/Debian), tooling, that your DNS A record points at this server, and that ports 80/443 are free.
+2. Installs Caddy from the official apt repo if it isn't already there.
+3. Renders `/etc/caddy/Caddyfile` from `infrastructure/caddy/Caddyfile.example` with your domain + ACME email (HTTP/2, gzip/zstd, HSTS + basic security headers).
+4. Updates `.env`: `HOST=localhost`, `APP_URL=https://<your-domain>`, `NODE_ENV=production` — the app is no longer directly exposed; Caddy is the only thing on the public internet.
+5. Runs `pnpm build` to produce the production bundle.
+6. Installs two systemd units — `storeai-web.service` and `storeai-worker.service` — rendered from `infrastructure/systemd/*.example`, wired to the current user and absolute pnpm path.
+7. Opens 80/443 in UFW and closes 3000 if it was previously open. Warns you about any non-UFW firewall (cloud security group).
+8. Enables + starts the services, reloads Caddy, and curls `https://<your-domain>/api/health` to confirm it's up.
+
+Flags: `--yes` to skip confirmation prompts, `--dry-run` to print what would happen without making changes, `--help` for the header.
+
+After it finishes:
+
+```bash
+sudo systemctl status storeai-web
+sudo systemctl status storeai-worker
+sudo journalctl -u caddy -f          # watch cert issuance or reload
+```
+
+**Before you run it:** create an A record for `<your-domain>` pointing at the server's public IP, and make sure ports 80 and 443 are open in your cloud provider's firewall/security group (not just UFW).
+
+If anything's off (DNS wrong, port 80 held by Apache, etc.) the script fails loudly before changing anything important.
 
 ## Contributing
 

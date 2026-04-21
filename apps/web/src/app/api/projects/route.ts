@@ -24,10 +24,11 @@ export const GET = tenantRoute({}, async ({ req, ctx }) => {
     ? and(eq(projects.tenantId, ctx.tenantId), sql`${projects.name} ILIKE ${"%" + q + "%"}`)
     : eq(projects.tenantId, ctx.tenantId);
 
-  const [{ count }] = await db
+  const [countRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(projects)
     .where(where);
+  const count = countRow?.count ?? 0;
 
   const rows = await db
     .select()
@@ -36,7 +37,7 @@ export const GET = tenantRoute({}, async ({ req, ctx }) => {
     .orderBy(orderFn(orderCol))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
-  return ok({ items: rows, page, pageSize, total: count ?? 0 });
+  return ok({ items: rows, page, pageSize, total: count });
 });
 
 export const POST = tenantRoute({}, async ({ req, ctx }) => {

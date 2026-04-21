@@ -1,0 +1,23 @@
+[Unit]
+Description=StoreAI worker (BullMQ)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User={$SERVICE_USER}
+WorkingDirectory={$REPO_DIR}
+Environment=NODE_ENV=production
+Environment=PATH={$SERVICE_PATH}
+ExecStart={$PNPM_BIN} worker:start
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=false
+
+[Install]
+WantedBy=multi-user.target

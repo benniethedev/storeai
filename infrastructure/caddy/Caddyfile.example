@@ -1,0 +1,47 @@
+# Caddy config for StoreAI.
+# Rendered into /etc/caddy/Caddyfile by infrastructure/scripts/deploy-domain.sh.
+# Caddy auto-issues and auto-renews Let's Encrypt certs on first request.
+#
+# Manual use:
+#   envsubst < Caddyfile.example | sudo tee /etc/caddy/Caddyfile
+
+{$DOMAIN} {
+    encode zstd gzip
+
+    # Request body limit (tune up if you expect larger file uploads)
+    request_body {
+        max_size 60MB
+    }
+
+    # Pass through to the Next.js server running on loopback
+    reverse_proxy localhost:{$STOREAI_PORT} {
+        # Longer timeouts for file uploads and long-running API-key requests
+        transport http {
+            read_timeout 120s
+            write_timeout 120s
+        }
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # Access log (rotate via logrotate if you enable this persistently)
+    log {
+        output file /var/log/caddy/storeai-access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format console
+    }
+}
+
+# ACME contact email — silences Let's Encrypt's "you didn't provide an email" warning.
+{
+    email {$ACME_EMAIL}
+}

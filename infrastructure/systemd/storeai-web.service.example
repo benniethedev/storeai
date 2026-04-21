@@ -1,0 +1,26 @@
+[Unit]
+Description=StoreAI web (Next.js)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User={$SERVICE_USER}
+WorkingDirectory={$REPO_DIR}
+Environment=NODE_ENV=production
+Environment=HOST=localhost
+Environment=PORT={$STOREAI_PORT}
+Environment=PATH={$SERVICE_PATH}
+ExecStart={$PNPM_BIN} start
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+# Basic hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=false
+
+[Install]
+WantedBy=multi-user.target
