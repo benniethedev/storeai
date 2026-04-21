@@ -41,6 +41,11 @@ export async function ensureBucket(): Promise<void> {
   }
 }
 
+/** Cheap liveness probe — useful for /api/health?deep=1. Throws on failure. */
+export async function probeBucket(): Promise<void> {
+  await getS3().send(new HeadBucketCommand({ Bucket: getBucket() }));
+}
+
 export function buildObjectKey(args: {
   tenantId: string;
   projectId?: string | null;

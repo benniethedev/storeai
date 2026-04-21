@@ -7,6 +7,7 @@ import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
 import { enqueueAuditFanout } from "@storeai/queue";
+import { redisSafe } from "@/lib/redisSafe";
 
 export const runtime = "nodejs";
 
@@ -82,6 +83,10 @@ export const POST = tenantRoute({}, async ({ req, ctx }) => {
     resourceId: row.id,
     metadata: { key: row.key, projectId: row.projectId },
   });
-  await enqueueAuditFanout({ tenantId: ctx.tenantId, auditLogId: auditId, action: "record.create" });
+  await redisSafe(
+    () => enqueueAuditFanout({ tenantId: ctx.tenantId, auditLogId: auditId, action: "record.create" }),
+    null,
+    "enqueue:audit-fanout",
+  );
   return ok(row);
 });

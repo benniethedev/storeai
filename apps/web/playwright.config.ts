@@ -1,6 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 3100;
+// Dedicated port for the Playwright-managed dev server. Must NOT collide
+// with a port another project is using — the previous value (3100) turned
+// out to be held by an unrelated app on some dev machines. We verify the
+// health endpoint returns the StoreAI shape before trusting a reused server.
+const PORT = Number(process.env.E2E_PORT ?? 3317);
 
 export default defineConfig({
   testDir: "./tests/e2e",

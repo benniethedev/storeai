@@ -12,6 +12,7 @@ import { z } from "zod";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
+import { redisSafe } from "@/lib/redisSafe";
 import { ValidationError } from "@storeai/shared/errors";
 
 export const runtime = "nodejs";
@@ -86,6 +87,10 @@ export const POST = tenantRoute({}, async ({ req, ctx }) => {
     resourceId: row.id,
     metadata: { name: row.originalName, size: row.sizeBytes, objectKey: row.objectKey },
   });
-  await enqueueFilePostProcess({ tenantId: ctx.tenantId, fileId: row.id });
+  await redisSafe(
+    () => enqueueFilePostProcess({ tenantId: ctx.tenantId, fileId: row.id }),
+    null,
+    "enqueue:file-post-process",
+  );
   return ok(row);
 });
