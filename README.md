@@ -88,7 +88,9 @@ pnpm worker          # in another
 | `pnpm db:migrate` | Apply migrations |
 | `pnpm db:seed` | Seed admin user + demo workspace |
 | `pnpm db:studio` | Open Drizzle Studio |
-| `pnpm dev` | Run Next.js dev server on :3000 |
+| `pnpm dev` | Next.js **dev** server on :3000 (HMR, no build needed — local dev only) |
+| `pnpm build` | Build the Next.js **production** bundle (required before `pnpm start`) |
+| `pnpm start` | Run the production server on :3000 (run `pnpm build` first) |
 | `pnpm worker` | Run the BullMQ worker |
 | `pnpm test` | Run Vitest integration suite |
 | `pnpm test:e2e` | Run Playwright end-to-end tests |

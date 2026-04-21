@@ -76,6 +76,49 @@ Suggested layout:
 - Add a systemd unit wrapping `docker compose` so the stack restarts on boot.
 - Backup routine: nightly `pg_dump` + MinIO `mc mirror` to offsite storage.
 
+## Network configuration
+
+### Dev mode vs. production mode
+
+Both scripts now bind to `0.0.0.0` by default (override with `HOST=localhost` if you only want loopback access):
+
+| Command | Mode | Requires prior build? | When to use |
+| --- | --- | --- | --- |
+| `pnpm dev` | Next.js dev server (HMR, source maps) | No | Local development only — never in production |
+| `pnpm build && pnpm start` | Next.js production server | **Yes** | Staging / production |
+
+`pnpm start` without a preceding `pnpm build` will fail with "could not find a production build". The dev server is slower, leaks stack traces on errors, and has no caching — don't expose it to the public internet.
+
+### Firewall
+
+If UFW is enabled on the host (Ubuntu's default):
+
+```bash
+# Direct port access (OK for staging)
+sudo ufw allow 3000/tcp comment 'StoreAI'
+
+# Behind a reverse proxy on 80/443 (recommended for prod)
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw deny 3000/tcp     # keep the app port closed to the public
+```
+
+### Cloud provider security groups
+
+On AWS / GCP / Azure / DigitalOcean, the VPC firewall is separate from UFW. Open the same ports there — inbound from `0.0.0.0/0` to your HTTP/HTTPS ports, and nothing else (especially not 5432, 6379, 9002).
+
+### Reverse proxy (recommended)
+
+Put Caddy / Nginx / Traefik in front so the app listens on `localhost:3000` behind TLS on 443. A minimal Caddyfile:
+
+```
+app.example.com {
+  reverse_proxy localhost:3000
+}
+```
+
+With a reverse proxy you should also set `HOST=localhost` in the app's env so Next.js only binds to loopback — no need to expose port 3000 at all.
+
 ## Known v1 limitations
 
 - No email invites — admins must add members who already have accounts.
