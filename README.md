@@ -77,7 +77,7 @@ pnpm worker          # in another
 ```
 </details>
 
-> The old defaults (`admin@storeai.local` / `admin12345`) no longer exist — `pnpm db:seed` refuses to run against a weak placeholder password. Use whatever the wizard set for you (or whatever you put in `SEED_ADMIN_PASSWORD`).
+> **The credentials to use are whatever `pnpm bootstrap` printed at the end of its run.** `pnpm db:seed` refuses to run against a weak placeholder, so the default `admin/admin12345` combo no longer exists. The wizard always prints the live email + password from your `.env`; if you lose them, just re-run `pnpm bootstrap` (idempotent) and it'll either show you what's in `.env` or regenerate a placeholder password.
 
 ## Everyday commands
 
@@ -98,7 +98,9 @@ pnpm worker          # in another
 | `pnpm deploy:domain` | Attach a custom domain + Let's Encrypt HTTPS on Ubuntu/Debian (installs Caddy, writes systemd units) |
 | `pnpm test` | Run Vitest integration suite |
 | `pnpm test:e2e` | Run Playwright end-to-end tests |
-| `pnpm reset` | Wipe volumes + re-migrate + re-seed |
+| `pnpm reset` | Wipe volumes + re-migrate + re-seed (prints the seeded creds at the end) |
+| `pnpm clean` | Nuclear wipe: volumes, `.next`, build caches (keeps `.env`) |
+| `pnpm admin:reset-password --email a@b.c --password pw` | Rotate any user's password without wiping the DB |
 
 ## Architecture at a glance
 
@@ -153,6 +155,49 @@ pnpm test:e2e   # Playwright — full signup → API key → CRUD flow in the br
 ```
 
 See `apps/web/tests/` for the suites. Covered areas: auth flows, tenant isolation, RBAC, API key auth + revocation, CRUD, file upload permissions, audit/usage log creation, queue job execution, member owner-protection, dashboard flows.
+
+## Troubleshooting
+
+### "Invalid email or password" right after `pnpm bootstrap`
+
+The wizard prints the live credentials at the end. If you missed them:
+
+```bash
+grep '^SEED_ADMIN_' .env        # shows exactly what the seed wrote into the DB
+```
+
+Those are always the source of truth — the seed script rotates the DB to match on every run.
+
+### I signed up through the UI and forgot the password
+
+No full reset needed. Rotate just that user:
+
+```bash
+pnpm admin:reset-password --email you@example.com --password 'newpass1234'
+```
+
+### `pnpm build` fails or the app behaves weirdly after an update
+
+```bash
+pnpm clean           # nuke volumes + .next + caches (keeps .env)
+pnpm bootstrap       # fresh infra + migrate + seed
+```
+
+### Can't reach the app from a browser on a VPS
+
+1. Is the app listening on `0.0.0.0`? → `ss -ltnp | grep :3000`
+2. Is UFW blocking it? → `sudo ufw status`; `sudo ufw allow 3000/tcp`
+3. Is your cloud provider's firewall / security group blocking it? (UFW ≠ cloud firewall)
+4. Does `curl -I http://localhost:3000/api/health` work *on the VPS itself*? If yes, it's a network-perimeter issue; if no, check the dev server logs.
+
+### Docker daemon not running
+
+```bash
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker $USER
+newgrp docker
+```
 
 ## Deploy with a custom domain + HTTPS
 

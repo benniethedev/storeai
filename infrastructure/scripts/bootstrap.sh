@@ -132,29 +132,50 @@ else
   ok "AUTH_SECRET already customized"
 fi
 
-# ---------- admin credentials (only on a fresh .env) ----------
+# ---------- admin credentials ----------
+# Runs on every bootstrap. If .env already has real values we preserve them;
+# only prompt (or auto-generate in --yes mode) if the password is missing,
+# a known-weak placeholder, or too short. The seed step below will rotate the
+# DB password to match .env, so the creds we print at the end are always the
+# real ones.
+step "Admin account"
+
+DEFAULT_EMAIL="admin@storeai.local"
+DEFAULT_TENANT_NAME="My Workspace"
+DEFAULT_TENANT_SLUG="workspace"
 GENERATED_PASSWORD=""
-ADMIN_EMAIL_CHOSEN=""
-if [ "$FRESH_ENV" = "true" ]; then
-  step "Admin account"
-  dim "These values are used by the seed step below to create your first user."
 
-  # Defaults
-  DEFAULT_EMAIL="admin@storeai.local"
-  DEFAULT_TENANT_NAME="My Workspace"
-  DEFAULT_TENANT_SLUG="workspace"
+current_env_var() {
+  local key="$1"
+  grep -E "^${key}=" .env 2>/dev/null | head -1 | sed -E "s/^${key}=//" || true
+}
 
+PASSWORD_CURRENT="$(current_env_var SEED_ADMIN_PASSWORD)"
+EMAIL_CURRENT="$(current_env_var SEED_ADMIN_EMAIL)"
+
+password_needs_setup() {
+  case "$1" in
+    ""|"CHANGE_ME_BEFORE_SEEDING"|"admin12345"|"admin"|"password"|"changeme"|"change-me")
+      return 0 ;;
+  esac
+  [ "${#1}" -lt 8 ]
+}
+
+if password_needs_setup "$PASSWORD_CURRENT"; then
+  dim "Admin password in .env is missing or a known placeholder — setting it now."
   if [ "$NON_INTERACTIVE" = "true" ]; then
-    ADMIN_EMAIL="$DEFAULT_EMAIL"
-    ADMIN_PASSWORD="$(random_hex 12)"   # 24 hex chars = ~96 bits
-    TENANT_NAME="$DEFAULT_TENANT_NAME"
-    TENANT_SLUG="$DEFAULT_TENANT_SLUG"
+    ADMIN_EMAIL="${EMAIL_CURRENT:-$DEFAULT_EMAIL}"
+    ADMIN_PASSWORD="$(random_hex 12)"
+    TENANT_NAME="$(current_env_var SEED_TENANT_NAME)"
+    TENANT_NAME="${TENANT_NAME:-$DEFAULT_TENANT_NAME}"
+    TENANT_SLUG="$(current_env_var SEED_TENANT_SLUG)"
+    TENANT_SLUG="${TENANT_SLUG:-$DEFAULT_TENANT_SLUG}"
     GENERATED_PASSWORD="$ADMIN_PASSWORD"
     warn "Non-interactive: generated a random admin password. It is printed at the end — save it."
   else
-    printf "Admin email [%s]: " "$DEFAULT_EMAIL"
+    printf "Admin email [%s]: " "${EMAIL_CURRENT:-$DEFAULT_EMAIL}"
     read -r ADMIN_EMAIL
-    ADMIN_EMAIL="${ADMIN_EMAIL:-$DEFAULT_EMAIL}"
+    ADMIN_EMAIL="${ADMIN_EMAIL:-${EMAIL_CURRENT:-$DEFAULT_EMAIL}}"
 
     while :; do
       printf "Admin password (8+ chars, leave blank to auto-generate): "
@@ -183,22 +204,24 @@ if [ "$FRESH_ENV" = "true" ]; then
       break
     done
 
-    printf "Workspace name [%s]: " "$DEFAULT_TENANT_NAME"
+    TENANT_NAME_PRIOR="$(current_env_var SEED_TENANT_NAME)"
+    TENANT_SLUG_PRIOR="$(current_env_var SEED_TENANT_SLUG)"
+    printf "Workspace name [%s]: " "${TENANT_NAME_PRIOR:-$DEFAULT_TENANT_NAME}"
     read -r TENANT_NAME
-    TENANT_NAME="${TENANT_NAME:-$DEFAULT_TENANT_NAME}"
+    TENANT_NAME="${TENANT_NAME:-${TENANT_NAME_PRIOR:-$DEFAULT_TENANT_NAME}}"
 
-    printf "Workspace slug [%s]: " "$DEFAULT_TENANT_SLUG"
+    printf "Workspace slug [%s]: " "${TENANT_SLUG_PRIOR:-$DEFAULT_TENANT_SLUG}"
     read -r TENANT_SLUG
-    TENANT_SLUG="${TENANT_SLUG:-$DEFAULT_TENANT_SLUG}"
+    TENANT_SLUG="${TENANT_SLUG:-${TENANT_SLUG_PRIOR:-$DEFAULT_TENANT_SLUG}}"
   fi
 
   set_env_var SEED_ADMIN_EMAIL    "$ADMIN_EMAIL"
   set_env_var SEED_ADMIN_PASSWORD "$ADMIN_PASSWORD"
   set_env_var SEED_TENANT_NAME    "$TENANT_NAME"
   set_env_var SEED_TENANT_SLUG    "$TENANT_SLUG"
-
-  ADMIN_EMAIL_CHOSEN="$ADMIN_EMAIL"
   ok "Admin configured: $ADMIN_EMAIL (workspace: $TENANT_SLUG)"
+else
+  ok "Admin credentials in .env look good — reusing them"
 fi
 
 # ---------- install ----------
@@ -235,15 +258,20 @@ cat <<EOF
   Reset everything   :  pnpm reset
 EOF
 
-if [ -n "$ADMIN_EMAIL_CHOSEN" ]; then
-  echo
-  bold "Your sign-in:"
-  printf "  Email:    %s\n" "$ADMIN_EMAIL_CHOSEN"
-  if [ -n "$GENERATED_PASSWORD" ]; then
-    printf "  Password: %s  \033[33m(auto-generated — save it now)\033[0m\n" "$GENERATED_PASSWORD"
-  else
-    printf "  Password: (the one you just set)\n"
-  fi
+# Always print the live credentials by reading them back from .env, so what
+# the user sees on screen is guaranteed to match what seed wrote into the DB.
+FINAL_EMAIL="$(grep -E '^SEED_ADMIN_EMAIL=' .env | head -1 | sed -E 's/^SEED_ADMIN_EMAIL=//')"
+FINAL_PASSWORD="$(grep -E '^SEED_ADMIN_PASSWORD=' .env | head -1 | sed -E 's/^SEED_ADMIN_PASSWORD=//')"
+
+echo
+bold "Your sign-in:"
+printf "  Email:    %s\n" "$FINAL_EMAIL"
+if [ -n "$GENERATED_PASSWORD" ]; then
+  printf "  Password: %s  \033[33m(auto-generated — save it now)\033[0m\n" "$FINAL_PASSWORD"
+else
+  printf "  Password: %s\n" "$FINAL_PASSWORD"
 fi
 
+echo
+dim "Credentials are stored as SEED_ADMIN_* in .env — change them and re-run 'pnpm bootstrap' (or 'pnpm db:seed') any time."
 echo
