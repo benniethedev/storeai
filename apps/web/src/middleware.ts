@@ -1,10 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { incrCounter } from "./lib/metrics.js";
+
+// Node runtime so we can use ioredis for the probe counter. Edge runtime
+// can't open TCP sockets to Redis without a proxy; Node runtime is fine
+// for this app's scale.
+export const runtime = "nodejs";
 
 /**
  * Cheap early-404 for common port-scanner probe paths. Stops them from
  * hitting route handlers, polluting usage_logs, or (in dev) triggering
  * the error overlay. This is NOT a security boundary — tenants, auth,
  * and RBAC handle that — it's an availability-and-noise filter.
+ *
+ * Caddy already drops these at the edge; this layer exists so that if
+ * Caddy is bypassed (misconfigured proxy, direct-to-app deploy) the
+ * app still 404s them, and the counter gives us a tripwire for when
+ * scanners reach us despite the reverse proxy.
  */
 const PROBE_PATTERNS: RegExp[] = [
   /\/\.env($|\.|\/)/i,
@@ -29,6 +40,8 @@ export function middleware(req: NextRequest): NextResponse {
 
   for (const pat of PROBE_PATTERNS) {
     if (pat.test(path)) {
+      // Fire and forget — never block the 404 on a Redis call.
+      void incrCounter("probe_hits");
       return new NextResponse("Not Found", {
         status: 404,
         headers: { "content-type": "text/plain" },

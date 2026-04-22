@@ -74,7 +74,20 @@ export async function requireTenantContext(
   if (args?.allowApiKey !== false && auth.toLowerCase().startsWith("bearer ")) {
     const bearer = auth.slice(7).trim();
     const res = await resolveApiKey(bearer);
-    if (!res) throw new UnauthorizedError("Invalid API key");
+    if (!res) {
+      // Platform-level event (no tenant): tenantId null.
+      await writeSystemAuditLog({
+        action: "auth.api_key.failed",
+        resourceType: "api_key",
+        metadata: {
+          // Store the prefix portion only (first 13 chars: "sk_XXXXXXXXXX")
+          // — enough to correlate against a specific issued key if needed,
+          // no secret material.
+          prefix: bearer.slice(0, 13),
+        },
+      }).catch(() => {});
+      throw new UnauthorizedError("Invalid API key");
+    }
     return {
       kind: "api_key",
       tenantId: res.apiKey.tenantId,
@@ -132,6 +145,36 @@ export async function writeAuditLog(args: {
       tenantId: args.ctx.tenantId,
       actorUserId: args.ctx.user?.id ?? null,
       actorApiKeyId: args.ctx.apiKeyId,
+      action: args.action,
+      resourceType: args.resourceType,
+      resourceId: args.resourceId ?? null,
+      metadata: args.metadata ?? {},
+    })
+    .returning({ id: auditLogs.id });
+  return row!.id;
+}
+
+/**
+ * Write a platform-level (no-tenant) audit log entry. Used for:
+ *   - auth.login / auth.login.failed / auth.api_key.failed
+ *   - ops.read (the ops dashboard endpoint)
+ * tenant_id is nullable — these are security events, not tenant events.
+ */
+export async function writeSystemAuditLog(args: {
+  action: string;
+  resourceType: string;
+  resourceId?: string | null;
+  userId?: string | null;
+  apiKeyId?: string | null;
+  metadata?: Record<string, unknown>;
+}): Promise<string> {
+  const db = getDb();
+  const [row] = await db
+    .insert(auditLogs)
+    .values({
+      tenantId: null,
+      actorUserId: args.userId ?? null,
+      actorApiKeyId: args.apiKeyId ?? null,
       action: args.action,
       resourceType: args.resourceType,
       resourceId: args.resourceId ?? null,

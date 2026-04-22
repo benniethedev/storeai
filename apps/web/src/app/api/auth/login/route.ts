@@ -9,6 +9,7 @@ import { handleError, ok } from "@/lib/http";
 import { sessionCookieOptions } from "@/lib/routeHelpers";
 import { env } from "@/env.server";
 import { rateLimit } from "@/lib/rateLimit";
+import { writeSystemAuditLog } from "@/lib/context";
 
 export const runtime = "nodejs";
 
@@ -25,9 +26,11 @@ function emailKey(email: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  let emailForAudit = "";
   try {
     const body = await req.json();
     const input = loginSchema.parse(body);
+    emailForAudit = input.email;
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
 
     // Per-IP bucket (spoofable behind untrusted XFF, but still useful).
@@ -43,7 +46,19 @@ export async function POST(req: NextRequest) {
     const hashToCheck = user?.passwordHash ?? (await getDecoyHash());
     const passwordOk = await verifyPassword(hashToCheck, input.password);
 
-    if (!user || !passwordOk) throw new UnauthorizedError("Invalid email or password");
+    if (!user || !passwordOk) {
+      // Store email hash only — enough to correlate repeated hits, no PII.
+      await writeSystemAuditLog({
+        action: "auth.login.failed",
+        resourceType: "user",
+        userId: user?.id ?? null,
+        metadata: {
+          email_hash: emailKey(input.email),
+          reason: user ? "bad_password" : "unknown_email",
+        },
+      }).catch(() => {});
+      throw new UnauthorizedError("Invalid email or password");
+    }
 
     const firstMem = await db
       .select()
@@ -61,6 +76,15 @@ export async function POST(req: NextRequest) {
       userAgent: req.headers.get("user-agent"),
       ip,
     });
+
+    // Record successful login as a platform-level audit event. No secrets,
+    // no IP, no user agent — those live in the sessions row already.
+    await writeSystemAuditLog({
+      action: "auth.login",
+      resourceType: "user",
+      userId: user.id,
+      metadata: { email_hash: emailKey(input.email) },
+    }).catch(() => {});
 
     const res = ok({
       user: { id: user.id, email: user.email, name: user.name },

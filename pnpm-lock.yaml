@@ -128,6 +128,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@storeai/auth':
+        specifier: workspace:*
+        version: link:../auth
       '@storeai/shared':
         specifier: workspace:*
         version: link:../shared

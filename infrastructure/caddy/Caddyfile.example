@@ -22,6 +22,31 @@
     }
     respond @probes 404
 
+    # -- Ops endpoint --------------------------------------------------------
+    # Read-only aggregate-metrics endpoint for external monitoring dashboards.
+    # Match the path and apply probe-deny plus (optionally) an IP allowlist.
+    # Uncomment and set `remote_ip <egress-ip>` for each dashboard that should
+    # be able to reach it. Leave the allowlist off to permit any Bearer-auth
+    # caller (the app-level token check is still the primary gate).
+    @ops {
+        path /api/ops /api/ops/*
+        # remote_ip 203.0.113.42     # netswagger dashboard egress
+    }
+    # Rate limit (requires `caddy add-package github.com/mholt/caddy-ratelimit`
+    # when you build Caddy; default apt package does not include it). Lower
+    # than the rest of /api since dashboards should poll at 30-60s cadence.
+    # rate_limit {
+    #     zone ops {
+    #         key {http.request.remote_host}
+    #         events 5
+    #         window 1s
+    #         burst 20
+    #     }
+    #     match {
+    #         path /api/ops /api/ops/*
+    #     }
+    # }
+
     # Pass through to the Next.js server running on loopback
     reverse_proxy localhost:{$STOREAI_PORT} {
         # Longer timeouts for file uploads and long-running API-key requests

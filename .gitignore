@@ -31,6 +31,9 @@ playwright/.cache
 .env.development
 !.env.example
 
+# Generated at build time by apps/web/scripts/write-build-info.mjs
+apps/web/build-info.json
+
 # Logs
 *.log
 npm-debug.log*

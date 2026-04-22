@@ -15,10 +15,12 @@
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed.ts",
     "reset-password": "tsx src/reset-password.ts",
+    "issue-ops-token": "tsx src/issue-ops-token.ts",
     "studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@storeai/auth": "workspace:*",
     "@storeai/shared": "workspace:*",
     "drizzle-orm": "^0.33.0",
     "postgres": "^3.4.4",

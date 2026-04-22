@@ -198,9 +198,11 @@ export const auditLogs = pgTable(
   "audit_logs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    tenantId: uuid("tenant_id")
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
+    // Nullable: platform-level security events (auth.login.failed before we
+    // know a tenant, ops.read from the dashboard, etc.) have no tenant.
+    // Tenant-scoped queries filter on tenant_id = $1 which already excludes
+    // these system rows — no change to tenant-facing behavior.
+    tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
     actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
     actorApiKeyId: uuid("actor_api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
     action: varchar("action", { length: 80 }).notNull(),
@@ -211,6 +213,22 @@ export const auditLogs = pgTable(
   },
   (t) => ({
     byTenantCreated: index("audit_logs_tenant_created_idx").on(t.tenantId, t.createdAt),
+    byActionCreated: index("audit_logs_action_created_idx").on(t.action, t.createdAt),
+  }),
+);
+
+export const opsTokens = pgTable(
+  "ops_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: varchar("name", { length: 120 }).notNull(),
+    tokenHash: text("token_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => ({
+    tokenHashUq: uniqueIndex("ops_tokens_token_hash_uq").on(t.tokenHash),
   }),
 );
 
@@ -250,3 +268,5 @@ export type FileRow = typeof files.$inferSelect;
 export type NewFile = typeof files.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type UsageLog = typeof usageLogs.$inferSelect;
+export type OpsToken = typeof opsTokens.$inferSelect;
+export type NewOpsToken = typeof opsTokens.$inferInsert;

@@ -27,6 +27,7 @@
     "reset": "bash infrastructure/scripts/reset.sh",
     "clean": "bash infrastructure/scripts/clean.sh",
     "admin:reset-password": "pnpm --filter @storeai/db run reset-password --",
+    "ops:issue-token": "pnpm --filter @storeai/db run issue-ops-token --",
     "test": "pnpm --filter @storeai/web test",
     "test:e2e": "pnpm --filter @storeai/web test:e2e",
     "lint": "pnpm -r lint",

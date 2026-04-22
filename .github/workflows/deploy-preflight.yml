@@ -48,6 +48,25 @@ jobs:
             exit 1
           fi
 
+      - name: Ops endpoint must never reference PII or secrets
+        # Catches drift if anyone widens the ops surface. The list is the
+        # exact terms a reviewer would look for after a scope-creep PR.
+        run: |
+          set -e
+          dir=apps/web/src/app/api/ops
+          if [ ! -d "$dir" ]; then
+            echo "Ops directory missing — skipping check."
+            exit 0
+          fi
+          fail=0
+          for needle in 'email' 'password_hash' 'secret_hash' 'token_hash' 'process\.env' 'req\.ip' 'user\.name' 'user_agent'; do
+            if grep -rnE "$needle" "$dir"; then
+              echo "::error file=$dir::ops endpoint references forbidden identifier '$needle'"
+              fail=1
+            fi
+          done
+          exit "$fail"
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20

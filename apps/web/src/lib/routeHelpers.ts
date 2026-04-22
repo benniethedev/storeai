@@ -11,6 +11,7 @@ import {
 import { ForbiddenError } from "@storeai/shared/errors";
 import { Permissions, type TenantRole } from "@storeai/shared";
 import { env } from "@/env.server";
+import { incrHashField, statusClass } from "./metrics.js";
 
 type Handler<T = unknown> = (args: {
   req: NextRequest;
@@ -65,6 +66,8 @@ export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Hand
       return res;
     } finally {
       const duration = Date.now() - started;
+      // Aggregate status-class counter for the ops endpoint.
+      void incrHashField("http", statusClass(status));
       if (ctx) {
         void writeUsageLog({
           tenantId: ctx.tenantId,
@@ -89,13 +92,16 @@ export function userRoute<T = unknown>(
   opts: { csrfExempt?: boolean } = {},
 ) {
   return async (req: NextRequest, routeCtx: { params: Promise<T> }): Promise<NextResponse> => {
+    let status = 500;
     try {
       const s = await getUserSessionFromRequest(req);
-      if (!s)
+      if (!s) {
+        status = 401;
         return NextResponse.json(
           { ok: false, error: { code: "unauthorized", message: "Unauthorized" } },
           { status: 401 },
         );
+      }
       if (!opts.csrfExempt && MUTATING.has(req.method.toUpperCase())) {
         const header = req.headers.get("x-sa-csrf");
         if (!header || header !== s.session.csrfToken) {
@@ -103,9 +109,15 @@ export function userRoute<T = unknown>(
         }
       }
       const params = (await routeCtx.params) as T;
-      return await handler({ req, user: s, params });
+      const res = await handler({ req, user: s, params });
+      status = res.status;
+      return res;
     } catch (err) {
-      return handleError(err);
+      const res = handleError(err);
+      status = res.status;
+      return res;
+    } finally {
+      void incrHashField("http", statusClass(status));
     }
   };
 }

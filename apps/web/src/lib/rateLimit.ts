@@ -2,6 +2,7 @@ import "server-only";
 import { getAppConnection } from "@storeai/queue";
 import { RateLimitedError } from "@storeai/shared/errors";
 import { redisSafe } from "./redisSafe.js";
+import { incrCounter } from "./metrics.js";
 
 /**
  * Fixed-window rate limiter in Redis. Simple and good-enough for v1.
@@ -32,5 +33,8 @@ export async function rateLimit(args: {
     `rl:${args.key}`,
   );
 
-  if (count !== null && count > args.limit) throw new RateLimitedError();
+  if (count !== null && count > args.limit) {
+    void incrCounter("rate_limited");
+    throw new RateLimitedError();
+  }
 }
