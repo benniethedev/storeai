@@ -94,18 +94,29 @@ Both scripts now bind to `0.0.0.0` by default (override with `HOST=localhost` if
 If UFW is enabled on the host (Ubuntu's default):
 
 ```bash
-# Direct port access (OK for staging)
-sudo ufw allow 3000/tcp comment 'StoreAI'
-
-# Behind a reverse proxy on 80/443 (recommended for prod)
+# Production (behind Caddy): public ingress is HTTPS only
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
-sudo ufw deny 3000/tcp     # keep the app port closed to the public
+sudo ufw deny 3000/tcp     # keep the app port closed to the public internet
 ```
+
+`pnpm deploy:domain` does all three automatically. It also removes any lingering `allow 3000/tcp` rule from a prior direct-access deployment.
+
+> Staging-only, no domain: `sudo ufw allow 3000/tcp` plus `HOST=0.0.0.0` (the default). Don't run public production like this — the Node process would be the public ingress, bypassing Caddy's security headers, rate limiting, and probe-path block.
 
 ### Cloud provider security groups
 
 On AWS / GCP / Azure / DigitalOcean, the VPC firewall is separate from UFW. Open the same ports there — inbound from `0.0.0.0/0` to your HTTP/HTTPS ports, and nothing else (especially not 5432, 6379, 9002).
+
+### Service user
+
+`pnpm deploy:domain` runs the app under a dedicated `storeai` system user (not the login user that cloned the repo). The deploy user keeps ownership of the repo for `git pull` / `pnpm build`; the service user gets group-read access and group-write on `.next/cache` (Next.js needs to write its runtime cache).
+
+- The service user has `nologin` as its shell and no home-directory writes other than `/var/lib/storeai`.
+- `.env` is tightened to mode 640 so it's only readable by owner + group, not world.
+- A compromise of the Node process cannot read arbitrary home-directory files, run `sudo`, or open new SSH sessions.
+
+Override with `--service-user $(whoami)` if you want to keep running as the login user (or pass any other existing user name).
 
 ### Reverse proxy (recommended)
 

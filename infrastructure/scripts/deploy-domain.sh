@@ -19,11 +19,16 @@
 #        --email  you@example.com
 #
 # Flags:
-#   --domain <d>   Fully qualified domain (required)
-#   --email  <e>   ACME contact email (required; used by Let's Encrypt)
-#   --yes | -y     Skip confirmation prompts
-#   --dry-run      Print what would happen; make no changes
-#   -h | --help    Show this header
+#   --domain <d>          Fully qualified domain (required)
+#   --email  <e>          ACME contact email (required; used by Let's Encrypt)
+#   --service-user <u>    System user to run the app as (default: "storeai").
+#                         Dedicated system user is recommended over a login
+#                         user (like "ubuntu") so a compromise of the Node
+#                         process has a smaller blast radius. Pass
+#                         "--service-user $(whoami)" to run as yourself.
+#   --yes | -y            Skip confirmation prompts
+#   --dry-run             Print what would happen; make no changes
+#   -h | --help           Show this header
 #
 # Idempotent — safe to re-run after DNS changes or repo updates.
 #
@@ -51,17 +56,19 @@ run() {
 # ---------- args ----------
 DOMAIN=""
 ACME_EMAIL=""
+SERVICE_USER_ARG="storeai"
 ASSUME_YES="false"
 DRY_RUN="false"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --domain)   DOMAIN="$2"; shift 2 ;;
-    --email)    ACME_EMAIL="$2"; shift 2 ;;
-    --yes|-y)   ASSUME_YES="true"; shift ;;
-    --dry-run)  DRY_RUN="true"; shift ;;
-    -h|--help)  sed -n '2,30p' "$0"; exit 0 ;;
-    *)          die "Unknown arg: $1 (try --help)" ;;
+    --domain)        DOMAIN="$2"; shift 2 ;;
+    --email)         ACME_EMAIL="$2"; shift 2 ;;
+    --service-user)  SERVICE_USER_ARG="$2"; shift 2 ;;
+    --yes|-y)        ASSUME_YES="true"; shift ;;
+    --dry-run)       DRY_RUN="true"; shift ;;
+    -h|--help)       sed -n '2,35p' "$0"; exit 0 ;;
+    *)               die "Unknown arg: $1 (try --help)" ;;
   esac
 done
 
@@ -124,12 +131,15 @@ ok "Tooling OK"
 PNPM_BIN="$(command -v pnpm)"
 NODE_DIR="$(dirname "$(command -v node)")"
 PNPM_DIR="$(dirname "$PNPM_BIN")"
-SERVICE_USER="${SUDO_USER:-$USER}"
+DEPLOY_USER="${SUDO_USER:-$USER}"
+DEPLOY_GROUP="$(id -gn "$DEPLOY_USER")"
+SERVICE_USER="$SERVICE_USER_ARG"
 SERVICE_PATH="$PNPM_DIR:$NODE_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 STOREAI_PORT="${PORT:-3000}"
-ok "Service user: $SERVICE_USER"
-ok "pnpm: $PNPM_BIN"
-ok "node PATH segment: $NODE_DIR"
+ok "Deploy user:    $DEPLOY_USER (group: $DEPLOY_GROUP)"
+ok "Service user:   $SERVICE_USER"
+ok "pnpm:           $PNPM_BIN"
+ok "node PATH:      $NODE_DIR"
 
 if [ ! -f .env ]; then
   die ".env not found in repo root. Run pnpm bootstrap first."
@@ -255,10 +265,10 @@ set_env_var() {
   fi
   mv "$tmp" "$file"
 }
-set_env_var HOST    "localhost"
+set_env_var HOST    "127.0.0.1"
 set_env_var APP_URL "https://$DOMAIN"
 set_env_var NODE_ENV "production"
-ok "HOST=localhost, APP_URL=https://$DOMAIN, NODE_ENV=production"
+ok "HOST=127.0.0.1, APP_URL=https://$DOMAIN, NODE_ENV=production"
 
 # ---------- production build ----------
 step "Building production bundle (pnpm build)"
@@ -267,6 +277,47 @@ if [ "$DRY_RUN" = "true" ]; then
 else
   pnpm --filter @storeai/web build
   ok "Build complete"
+fi
+
+# ---------- service user + filesystem perms ----------
+# The web and worker services run as a dedicated system user ("storeai" by
+# default) instead of the login user, so a compromise of the Node process
+# can't read arbitrary home-directory files or act on behalf of a sudoer.
+# The deploy user (whoever ran the script) still owns the repo for `git
+# pull` / `pnpm build`; the service user gets group read access plus
+# group-write on .next/cache so Next.js can populate its runtime caches.
+step "Service user: $SERVICE_USER"
+if [ "$SERVICE_USER" = "$DEPLOY_USER" ]; then
+  ok "Running as the deploy user — no dedicated service account (pass --service-user storeai to harden)"
+else
+  if id "$SERVICE_USER" >/dev/null 2>&1; then
+    ok "User '$SERVICE_USER' already exists"
+  else
+    run "sudo useradd --system --home-dir /var/lib/$SERVICE_USER --create-home --shell /usr/sbin/nologin $SERVICE_USER"
+    ok "Created system user '$SERVICE_USER'"
+  fi
+
+  # Let the service user read files in the deploy user's group (repo + deps).
+  if [ "$DRY_RUN" != "true" ] && ! id -nG "$SERVICE_USER" | tr ' ' '\n' | grep -qx "$DEPLOY_GROUP"; then
+    run "sudo usermod -aG $DEPLOY_GROUP $SERVICE_USER"
+    ok "Added $SERVICE_USER to group $DEPLOY_GROUP"
+  fi
+
+  # Ensure the home dir is traversable by the service user (home is usually
+  # 750/755 — if it's 700 the service user can't even enter it).
+  DEPLOY_HOME="$(getent passwd "$DEPLOY_USER" | cut -d: -f6)"
+  if [ -n "$DEPLOY_HOME" ]; then
+    run "sudo chmod o+x '$DEPLOY_HOME'"
+  fi
+
+  # Group-read on the repo so the service user can read node_modules, .next, etc.
+  run "sudo chgrp -R '$DEPLOY_GROUP' '$REPO_DIR'"
+  run "sudo chmod -R g+rX '$REPO_DIR'"
+  # Next.js writes to .next/cache at runtime (ISR, image optimization).
+  run "sudo chmod -R g+rwX '$REPO_DIR/.next'"
+  # .env holds secrets — tighten from 644 to 640 (owner + group only).
+  run "sudo chmod 640 '$REPO_DIR/.env'"
+  ok "Granted $SERVICE_USER read/cache-write access to the repo"
 fi
 
 # ---------- systemd units ----------
@@ -308,14 +359,20 @@ step "Firewall"
 if have ufw && sudo ufw status 2>/dev/null | grep -q "Status: active"; then
   run "sudo ufw allow 80/tcp  comment 'StoreAI HTTP (Caddy)'"
   run "sudo ufw allow 443/tcp comment 'StoreAI HTTPS (Caddy)'"
-  # Best-effort: if 3000 was opened for direct access before, drop it.
-  if sudo ufw status | grep -q "^3000/tcp"; then
-    run "sudo ufw delete allow 3000/tcp"
-    ok "Closed public access to :3000 (now loopback-only)"
+  # :3000 should never be public — Caddy is the only ingress. Remove any
+  # stale allow rule from a pre-domain setup and add an explicit deny so an
+  # accidental "ufw allow 3000" elsewhere doesn't quietly re-expose it.
+  while sudo ufw status numbered 2>/dev/null | grep -qE "^\[[0-9]+\] 3000/tcp\s+ALLOW"; do
+    rule_num=$(sudo ufw status numbered | grep -E "^\[[0-9]+\] 3000/tcp\s+ALLOW" | head -1 | sed 's/^\[\([0-9]*\)\].*/\1/')
+    run "echo y | sudo ufw delete $rule_num"
+  done
+  if ! sudo ufw status 2>/dev/null | grep -qE "^3000/tcp\s+DENY"; then
+    run "sudo ufw deny 3000/tcp comment 'StoreAI app (loopback only)'"
   fi
-  ok "UFW: 80/443 open"
+  ok "UFW: 80/443 open, 3000 explicitly denied from the public interface"
 else
-  warn "UFW not active — skipping firewall changes. Don't forget your cloud provider's firewall!"
+  warn "UFW not active — skipping firewall changes."
+  warn "Don't forget your cloud provider's firewall: open 80/443, close 3000."
 fi
 
 # ---------- start services ----------

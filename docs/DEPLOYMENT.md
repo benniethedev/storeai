@@ -85,11 +85,12 @@ What this does (idempotent — safe to re-run):
 1. Preflights OS, tooling, DNS (must resolve to this host), and that ports 80/443 are free
 2. Installs Caddy from the official apt repo if missing
 3. Renders `/etc/caddy/Caddyfile` with HSTS, HTTP/2, gzip/zstd, security headers, and **an edge probe-path block** (404s scanner traffic before it hits Node)
-4. Updates `.env`: `HOST=localhost`, `APP_URL=https://<domain>`, `NODE_ENV=production`
+4. Updates `.env`: `HOST=127.0.0.1`, `APP_URL=https://<domain>`, `NODE_ENV=production`
 5. Runs `pnpm build`
-6. Installs two systemd units (`storeai-web.service`, `storeai-worker.service`) with `Restart=always` and crash-loop backoff
-7. Opens 80/443 in UFW; closes 3000 if previously open
-8. Enables + starts services, reloads Caddy, verifies `https://<domain>/api/health` returns 200
+6. Ensures the service user exists (`storeai` by default — a dedicated `nologin` system user), gives it group-read access to the repo and group-write on `.next/cache`, tightens `.env` to mode 640
+7. Installs two systemd units (`storeai-web.service`, `storeai-worker.service`) running as the service user with `Restart=always` and crash-loop backoff
+8. Opens 80/443 in UFW; **explicitly denies 3000** (removes any stale allow rules)
+9. Enables + starts services, reloads Caddy, verifies `https://<domain>/api/health` returns 200
 
 ### Flags
 

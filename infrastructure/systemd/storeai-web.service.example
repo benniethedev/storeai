@@ -11,7 +11,8 @@ Type=simple
 User={$SERVICE_USER}
 WorkingDirectory={$REPO_DIR}
 Environment=NODE_ENV=production
-Environment=HOST=localhost
+# Bind to loopback only — Caddy is the sole public ingress on 80/443.
+Environment=HOST=127.0.0.1
 Environment=PORT={$STOREAI_PORT}
 Environment=PATH={$SERVICE_PATH}
 ExecStart={$PNPM_BIN} start
