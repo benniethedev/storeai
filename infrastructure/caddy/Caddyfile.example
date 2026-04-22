@@ -5,6 +5,14 @@
 # Manual use:
 #   envsubst < Caddyfile.example | sudo tee /etc/caddy/Caddyfile
 
+# Global options block — MUST come before any site block.
+# Caddy's adapter rejects any config where a keyless block follows a site
+# block ("server block without any key is global configuration, and if used,
+# it must be first").
+{
+    email {$ACME_EMAIL}
+}
+
 {$DOMAIN} {
     encode zstd gzip
 
@@ -24,17 +32,21 @@
 
     # -- Ops endpoint --------------------------------------------------------
     # Read-only aggregate-metrics endpoint for external monitoring dashboards.
-    # Match the path and apply probe-deny plus (optionally) an IP allowlist.
-    # Uncomment and set `remote_ip <egress-ip>` for each dashboard that should
-    # be able to reach it. Leave the allowlist off to permit any Bearer-auth
-    # caller (the app-level token check is still the primary gate).
+    # Match the path and apply (optionally) an IP allowlist. Uncomment and
+    # set `remote_ip <egress-ip>` for each dashboard that should be able to
+    # reach it. Leave the allowlist off to permit any Bearer-auth caller —
+    # the app-level token check plus the in-route per-token rate limit are
+    # the primary gates (see apps/web/src/app/api/ops/overview/route.ts).
     @ops {
         path /api/ops /api/ops/*
         # remote_ip 203.0.113.42     # netswagger dashboard egress
     }
-    # Rate limit (requires `caddy add-package github.com/mholt/caddy-ratelimit`
-    # when you build Caddy; default apt package does not include it). Lower
-    # than the rest of /api since dashboards should poll at 30-60s cadence.
+    # Optional edge rate limit. The in-app limit (30 req / 60s per token) is
+    # sufficient; enabling this gives defense in depth. Requires the
+    # caddy-ratelimit module — NOT in the default apt package. Rebuild Caddy
+    # with:
+    #     xcaddy build --with github.com/mholt/caddy-ratelimit
+    # (or on a recent Caddy: `caddy add-package github.com/mholt/caddy-ratelimit`)
     # rate_limit {
     #     zone ops {
     #         key {http.request.remote_host}
@@ -73,9 +85,4 @@
         }
         format console
     }
-}
-
-# ACME contact email — silences Let's Encrypt's "you didn't provide an email" warning.
-{
-    email {$ACME_EMAIL}
 }

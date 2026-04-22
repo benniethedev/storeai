@@ -29,6 +29,18 @@ import { probeBucket } from "@storeai/storage";
 import { writeSystemAuditLog } from "@/lib/context";
 import { sumLast24h, sumHashLast24h } from "@/lib/metrics";
 import { getBuildInfo } from "@/lib/buildInfo";
+import { rateLimit, retryAfterSeconds } from "@/lib/rateLimit";
+import { RateLimitedError } from "@storeai/shared/errors";
+import { opsRateLimit } from "@/lib/opsConfig";
+
+// Per-token throttle for every /api/ops/* route. Defaults to 30 req / 60s —
+// matches the recommended 30-60s dashboard poll cadence with ~2x burst
+// headroom for restarts and retries. If a token leaks, this caps the damage
+// without operator intervention; successful 429s already increment the
+// metrics:rate_limited counter, which shows up in this endpoint's own
+// counts_24h.rate_limited field — a useful tripwire.
+// Tests mutate apps/web/src/lib/opsConfig.ts to exercise the path with a
+// smaller limit.
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -219,7 +231,31 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // 2. Gather per-subsystem health (fail-closed). All three run in parallel.
+  // 2. Per-token throttle. Applies before any DB/Redis work so a leaked
+  //    token can't run up a Postgres bill just by polling. Separate buckets
+  //    per token — an abusive token does not affect others.
+  try {
+    await rateLimit({
+      key: `ops:${resolved.token.id}`,
+      limit: opsRateLimit.limit,
+      windowSeconds: opsRateLimit.windowSeconds,
+    });
+  } catch (err) {
+    if (err instanceof RateLimitedError) {
+      return NextResponse.json(
+        { ok: false, error: { code: "rate_limited" } },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(retryAfterSeconds(opsRateLimit.windowSeconds)),
+          },
+        },
+      );
+    }
+    throw err;
+  }
+
+  // 3. Gather per-subsystem health (fail-closed). All three run in parallel.
   const [pg, redis, storage] = await Promise.all([
     probePostgres(),
     probeRedis(),

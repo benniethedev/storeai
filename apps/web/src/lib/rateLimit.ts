@@ -9,13 +9,22 @@ import { incrCounter } from "./metrics.js";
  * Fails OPEN if Redis is unavailable — we'd rather serve legitimate traffic
  * through a Redis outage than hard-fail auth flows. Absolute rate limits
  * should be enforced upstream (reverse proxy / WAF) in production.
+ *
+ * In tests the limiter is a no-op by default (so counters don't leak across
+ * test runs). Set FORCE_RATE_LIMIT=1 for tests that want to exercise it.
  */
+function isBypassed(): boolean {
+  const force = process.env.FORCE_RATE_LIMIT === "1";
+  if (force) return false;
+  return process.env.NODE_ENV === "test" || process.env.DISABLE_RATE_LIMIT === "1";
+}
+
 export async function rateLimit(args: {
   key: string;
   limit: number;
   windowSeconds: number;
 }): Promise<void> {
-  if (process.env.NODE_ENV === "test" || process.env.DISABLE_RATE_LIMIT === "1") return;
+  if (isBypassed()) return;
 
   const count = await redisSafe<number | null>(
     async () => {
@@ -37,4 +46,13 @@ export async function rateLimit(args: {
     void incrCounter("rate_limited");
     throw new RateLimitedError();
   }
+}
+
+/**
+ * Seconds remaining in the current fixed window — handy for `Retry-After`.
+ */
+export function retryAfterSeconds(windowSeconds: number): number {
+  const nowSec = Date.now() / 1000;
+  const boundary = Math.ceil(nowSec / windowSeconds) * windowSeconds;
+  return Math.max(1, Math.ceil(boundary - nowSec));
 }

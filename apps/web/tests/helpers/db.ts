@@ -12,6 +12,7 @@ import {
   auditLogs,
   usageLogs,
   sessions,
+  opsTokens,
 } from "@storeai/db";
 import { hashPassword, createSession, createApiKey } from "@storeai/auth";
 
@@ -28,7 +29,8 @@ export async function resetDb(): Promise<void> {
     ${sessions},
     ${memberships},
     ${tenants},
-    ${users}
+    ${users},
+    ${opsTokens}
     RESTART IDENTITY CASCADE`);
 }
 

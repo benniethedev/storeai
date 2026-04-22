@@ -171,6 +171,134 @@ describe("/api/ops/overview — payload", () => {
   });
 });
 
+describe("/api/ops/overview — per-token rate limit", () => {
+  // Shrink LIMIT for tests. Production is 30/60s (see apps/web/src/lib/
+  // opsConfig.ts). Running 30+ argon2 verifies per test would risk
+  // straddling a 60s window boundary and making these flaky.
+  const LIMIT = 5;
+  let originalLimit: number;
+  let originalWindow: number;
+
+  beforeAll(async () => {
+    // Limiter is bypassed in NODE_ENV=test by default; turn it on here.
+    process.env.FORCE_RATE_LIMIT = "1";
+    const { opsRateLimit } = await import("@/lib/opsConfig");
+    originalLimit = opsRateLimit.limit;
+    originalWindow = opsRateLimit.windowSeconds;
+    opsRateLimit.limit = LIMIT;
+    opsRateLimit.windowSeconds = 60;
+  });
+  afterAll(async () => {
+    delete process.env.FORCE_RATE_LIMIT;
+    const { opsRateLimit } = await import("@/lib/opsConfig");
+    opsRateLimit.limit = originalLimit;
+    opsRateLimit.windowSeconds = originalWindow;
+  });
+
+  async function clearOpsBucket(tokenId: string) {
+    const { getAppConnection } = await import("@storeai/queue");
+    const r = getAppConnection();
+    const keys = await r.keys(`rl:ops:${tokenId}:*`);
+    if (keys.length) await r.del(...keys);
+  }
+
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it(`allows up to ${LIMIT} requests per minute and 429s the next one with Retry-After`, async () => {
+    const { plaintext, token } = await issueOpsToken({ name: "rl-test" });
+    await clearOpsBucket(token.id);
+
+    // Drive through the full budget. We don't care about 200 payloads here,
+    // just that none of the first LIMIT calls are 429s.
+    for (let i = 0; i < LIMIT; i++) {
+      const res = await opsGET(
+        buildRequest("/api/ops/overview", {
+          headers: { authorization: `Bearer ${plaintext}` },
+        }),
+      );
+      expect(res.status).not.toBe(429);
+    }
+
+    // The next call should be throttled.
+    const res = await opsGET(
+      buildRequest("/api/ops/overview", {
+        headers: { authorization: `Bearer ${plaintext}` },
+      }),
+    );
+    expect(res.status).toBe(429);
+    const retryAfter = res.headers.get("retry-after");
+    expect(retryAfter).toBeTruthy();
+    expect(Number(retryAfter)).toBeGreaterThan(0);
+    expect(Number(retryAfter)).toBeLessThanOrEqual(60);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.error?.code).toBe("rate_limited");
+  }, 20_000);
+
+  it("429 increments the rate_limited counter observable on the endpoint itself", async () => {
+    const { plaintext, token } = await issueOpsToken({ name: "rl-counter" });
+    await clearOpsBucket(token.id);
+
+    // Saturate the bucket.
+    for (let i = 0; i < LIMIT + 1; i++) {
+      await opsGET(
+        buildRequest("/api/ops/overview", {
+          headers: { authorization: `Bearer ${plaintext}` },
+        }),
+      );
+    }
+
+    // Use a fresh token (its own bucket) to read the aggregate payload.
+    // Its single request won't exhaust its own budget and the payload should
+    // reflect the rate_limited increments above.
+    const { plaintext: readerPlaintext, token: reader } = await issueOpsToken({
+      name: "rl-counter-reader",
+    });
+    await clearOpsBucket(reader.id);
+
+    const res = await opsGET(
+      buildRequest("/api/ops/overview", {
+        headers: { authorization: `Bearer ${readerPlaintext}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.counts_24h.rate_limited).toBeGreaterThan(0);
+  }, 20_000);
+
+  it("different tokens get independent buckets", async () => {
+    const { plaintext: a, token: tokenA } = await issueOpsToken({ name: "rl-a" });
+    const { plaintext: b, token: tokenB } = await issueOpsToken({ name: "rl-b" });
+    await clearOpsBucket(tokenA.id);
+    await clearOpsBucket(tokenB.id);
+
+    // Exhaust token A.
+    for (let i = 0; i < LIMIT; i++) {
+      await opsGET(
+        buildRequest("/api/ops/overview", {
+          headers: { authorization: `Bearer ${a}` },
+        }),
+      );
+    }
+    const aRes = await opsGET(
+      buildRequest("/api/ops/overview", {
+        headers: { authorization: `Bearer ${a}` },
+      }),
+    );
+    expect(aRes.status).toBe(429);
+
+    // Token B is untouched and must still pass.
+    const bRes = await opsGET(
+      buildRequest("/api/ops/overview", {
+        headers: { authorization: `Bearer ${b}` },
+      }),
+    );
+    expect(bRes.status).toBe(200);
+  }, 30_000);
+});
+
 describe("/api/ops/overview — fail-closed", () => {
   beforeAll(async () => {
     await resetDb();

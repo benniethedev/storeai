@@ -165,18 +165,38 @@ If your dashboard needs sub-second freshness for a specific field, add that fiel
 
 ---
 
-## Caddy / reverse proxy configuration
+## Rate limiting
 
-In `infrastructure/caddy/Caddyfile.example` there is a commented `@ops` matcher block and a (commented) `rate_limit` block. For production:
+### In the route (always on)
 
-1. Uncomment the `remote_ip <dashboard-egress-ip>` inside `@ops` to restrict which source IPs can reach the endpoint.
-2. To enable the rate limiter, build Caddy with the `caddy-ratelimit` module:
-   ```
+Every `/api/ops/*` request is throttled **per token** at **30 requests / 60 seconds** (see `apps/web/src/lib/opsConfig.ts`). On the 31st request within the window the route returns:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: <seconds-until-window-closes>
+Content-Type: application/json
+
+{ "ok": false, "error": { "code": "rate_limited" } }
+```
+
+The 429 also increments `metrics:rate_limited:YYYYMMDD`, which surfaces on this same endpoint as `counts_24h.rate_limited` — so a misbehaving dashboard (or a leaked token) announces itself in the payload.
+
+Different tokens get independent buckets: one abusive token does not starve others.
+
+### Caddy layer (optional, defense in depth)
+
+`infrastructure/caddy/Caddyfile.example` ships a commented `@ops` matcher and a commented `rate_limit` block. For production:
+
+1. Uncomment `remote_ip <dashboard-egress-ip>` inside `@ops` to restrict which source IPs can reach the endpoint.
+2. To enable the edge rate limit, rebuild Caddy with the `caddy-ratelimit` module:
+   ```bash
+   xcaddy build --with github.com/mholt/caddy-ratelimit
+   # or, on a recent Caddy that supports it:
    caddy add-package github.com/mholt/caddy-ratelimit
    ```
-   then uncomment the `rate_limit` block. The default apt `caddy` binary does not include it.
+   Then uncomment the `rate_limit` block. The default apt `caddy` package does **not** include this module.
 
-The token check inside the app is the primary gate; edge IP/rate limiting is defense in depth.
+The in-app per-token limit is sufficient on its own; the Caddy layer is useful if you're getting hammered at the edge (e.g. a leaked token being reused faster than you can revoke).
 
 ---
 
