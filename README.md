@@ -45,12 +45,12 @@ infrastructure/
 ```bash
 git clone https://github.com/benniethedev/storeai.git && cd storeai
 pnpm bootstrap      # installs deps, starts Postgres/Redis/MinIO, migrates, seeds
-pnpm start:all      # runs the Next.js app + the BullMQ worker together
+pnpm dev:all        # runs the Next.js dev server + worker (loopback-only)
 ```
 
 That's it — open http://localhost:3000 and sign in with the credentials the wizard printed at the end of `pnpm bootstrap` (or set your own interactively).
 
-> **Deploying on a VPS?** The dev and prod servers bind to `0.0.0.0` by default, so external access on port 3000 works out of the box — just open the port in your firewall. Once you have a domain, jump to **[Deploy with a custom domain + HTTPS](#deploy-with-a-custom-domain--https)** for a one-command flow that installs Caddy, issues a Let's Encrypt cert, and switches to production mode.
+> **The dev and production servers bind to `127.0.0.1` by default.** Public exposure is an explicit opt-in (`HOST=0.0.0.0 pnpm start`) and should only ever be used behind a reverse proxy. When you have a domain, skip straight to **[Deploy with a custom domain + HTTPS](#deploy-with-a-custom-domain--https)** — `pnpm deploy:domain` installs Caddy, issues a Let's Encrypt cert, sets up UFW default-deny, and runs the app as a hardened `storeai` system user. For a quick VPS preview without a domain, tunnel over SSH — see [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md#preview-a-vps-without-exposing-it).
 
 <details>
 <summary>What <code>pnpm bootstrap</code> does (the old 5-step flow, automated)</summary>
@@ -90,12 +90,14 @@ pnpm worker          # in another
 | `pnpm db:migrate` | Apply migrations |
 | `pnpm db:seed` | Seed admin user + demo workspace |
 | `pnpm db:studio` | Open Drizzle Studio |
-| `pnpm dev` | Next.js **dev** server on :3000 (HMR, no build needed — local dev only) |
+| `pnpm dev` | Next.js **dev** server on 127.0.0.1:3000 (HMR — local dev only) |
+| `pnpm dev:all` | Dev server + worker together. Refuses to run if `NODE_ENV=production`. |
 | `pnpm build` | Build the Next.js **production** bundle (required before `pnpm start`) |
-| `pnpm start` | Run the production server on :3000 (run `pnpm build` first) |
-| `pnpm worker` | Run the BullMQ worker (dev mode) |
-| `pnpm worker:start` | Run the worker in production mode |
-| `pnpm deploy:domain` | Attach a custom domain + Let's Encrypt HTTPS on Ubuntu/Debian (installs Caddy, writes systemd units) |
+| `pnpm start` | Run the production server on 127.0.0.1:3000 (run `pnpm build` first) |
+| `pnpm start:all` | Production web + worker together (same binary systemd would run) |
+| `pnpm worker` | BullMQ worker in dev mode |
+| `pnpm worker:start` | BullMQ worker in production mode |
+| `pnpm deploy:domain` | Attach a custom domain + Let's Encrypt HTTPS on Ubuntu/Debian (installs Caddy, writes systemd units, sets UFW default-deny) |
 | `pnpm test` | Run Vitest integration suite |
 | `pnpm test:e2e` | Run Playwright end-to-end tests |
 | `pnpm reset` | Wipe volumes + re-migrate + re-seed (prints the seeded creds at the end) |

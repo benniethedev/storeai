@@ -355,24 +355,38 @@ write_unit "$REPO_DIR/infrastructure/systemd/storeai-worker.service.example" /et
 run "sudo systemctl daemon-reload"
 
 # ---------- firewall ----------
+# On a freshly-rebuilt box UFW is typically installed but inactive, which
+# means the host has no firewall at all. We set up a default-deny policy
+# and open only the ports we need. CRITICAL: allow 22 BEFORE enabling, or
+# we lock ourselves out of an SSH-only box.
 step "Firewall"
-if have ufw && sudo ufw status 2>/dev/null | grep -q "Status: active"; then
+if have ufw; then
+  run "sudo ufw default deny incoming"
+  run "sudo ufw default allow outgoing"
+  run "sudo ufw allow 22/tcp  comment 'SSH'"
   run "sudo ufw allow 80/tcp  comment 'StoreAI HTTP (Caddy)'"
   run "sudo ufw allow 443/tcp comment 'StoreAI HTTPS (Caddy)'"
-  # :3000 should never be public — Caddy is the only ingress. Remove any
-  # stale allow rule from a pre-domain setup and add an explicit deny so an
-  # accidental "ufw allow 3000" elsewhere doesn't quietly re-expose it.
+
+  # Strip any stale 3000-allow rules left by older direct-access deployments.
   while sudo ufw status numbered 2>/dev/null | grep -qE "^\[[0-9]+\] 3000/tcp\s+ALLOW"; do
     rule_num=$(sudo ufw status numbered | grep -E "^\[[0-9]+\] 3000/tcp\s+ALLOW" | head -1 | sed 's/^\[\([0-9]*\)\].*/\1/')
     run "echo y | sudo ufw delete $rule_num"
   done
+
+  # Explicit deny so an accidental re-allow elsewhere doesn't silently
+  # re-expose the Node process.
   if ! sudo ufw status 2>/dev/null | grep -qE "^3000/tcp\s+DENY"; then
     run "sudo ufw deny 3000/tcp comment 'StoreAI app (loopback only)'"
   fi
-  ok "UFW: 80/443 open, 3000 explicitly denied from the public interface"
+
+  # Enable after the allow rules are in place.
+  if ! sudo ufw status 2>/dev/null | grep -q "Status: active"; then
+    run "echo y | sudo ufw enable"
+  fi
+  ok "UFW: default-deny; 22/80/443 allow; 3000 deny"
 else
-  warn "UFW not active — skipping firewall changes."
-  warn "Don't forget your cloud provider's firewall: open 80/443, close 3000."
+  warn "UFW not installed on this host — skipping firewall changes."
+  warn "Don't forget your cloud provider's firewall: open 22/80/443, close 3000."
 fi
 
 # ---------- start services ----------

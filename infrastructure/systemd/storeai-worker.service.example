@@ -19,10 +19,40 @@ TimeoutStartSec=60
 TimeoutStopSec=30
 StandardOutput=journal
 StandardError=journal
-NoNewPrivileges=true
-ProtectSystem=full
-ProtectHome=false
+
+# --- Hardening ---------------------------------------------------------------
+# Filesystem
+ProtectSystem=strict
+ProtectHome=true
+# The repo lives under /home/<deploy-user>/, which ProtectHome=true would
+# normally hide. Make the repo readable, and only runtime state writable.
+BindReadOnlyPaths={$REPO_DIR}
+ReadWritePaths={$REPO_DIR}/.next/cache /var/lib/storeai
 PrivateTmp=true
+PrivateDevices=true
+
+# Kernel + namespace surface
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Network / capabilities / syscalls
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+
+# MemoryDenyWriteExecute=true — see note in storeai-web.service.example.
+# MemoryDenyWriteExecute=true
 
 [Install]
 WantedBy=multi-user.target

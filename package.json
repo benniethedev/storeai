@@ -22,6 +22,7 @@
     "db:studio": "pnpm --filter @storeai/db studio",
     "bootstrap": "bash infrastructure/scripts/bootstrap.sh",
     "start:all": "bash infrastructure/scripts/start-all.sh",
+    "dev:all": "bash infrastructure/scripts/start-all-dev.sh",
     "deploy:domain": "bash infrastructure/scripts/deploy-domain.sh",
     "reset": "bash infrastructure/scripts/reset.sh",
     "clean": "bash infrastructure/scripts/clean.sh",

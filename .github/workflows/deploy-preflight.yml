@@ -1,0 +1,143 @@
+name: deploy-preflight
+
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+
+jobs:
+  env-sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject unsafe env defaults in committed env templates
+        run: |
+          set -e
+          files="$(git ls-files '*.env*' | grep -vE '\.env\.local$' || true)"
+          fail=0
+          for f in $files; do
+            if grep -qE '^NODE_ENV=development' "$f"; then
+              echo "::error file=$f::NODE_ENV=development must not be committed"
+              fail=1
+            fi
+            if grep -qE '^HOST=0\.0\.0\.0' "$f"; then
+              echo "::error file=$f::HOST=0.0.0.0 must not be the committed default"
+              fail=1
+            fi
+          done
+          exit "$fail"
+
+      - name: Reject `next dev` in production scripts
+        run: |
+          set -e
+          if [ -f infrastructure/scripts/start-all.sh ]; then
+            # `grep -n` prefixes matches with "<lineno>:", so the comment
+            # filter has to account for that prefix.
+            if grep -nE '(pnpm|npm|yarn).+(run +)?dev|next +dev' \
+                infrastructure/scripts/start-all.sh \
+                | grep -vE '^[0-9]+:\s*#'; then
+              echo "::error file=infrastructure/scripts/start-all.sh::references a dev server (use start-all-dev.sh for development)"
+              exit 1
+            fi
+          fi
+
+      - name: Reject `HOST=0.0.0.0` as a default in apps/web scripts
+        run: |
+          set -e
+          if grep -nE 'HOST:-0\.0\.0\.0' apps/web/package.json; then
+            echo "::error file=apps/web/package.json::HOST must default to 127.0.0.1, not 0.0.0.0"
+            exit 1
+          fi
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: storeai
+          POSTGRES_PASSWORD: storeai_dev
+          POSTGRES_DB: storeai
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U storeai -d storeai"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6381:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+      minio:
+        image: minio/minio:RELEASE.2024-09-22T00-33-43Z
+        env:
+          MINIO_ROOT_USER: storeai
+          MINIO_ROOT_PASSWORD: storeai_dev_secret
+        ports:
+          - 9002:9000
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/ready"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://storeai:storeai_dev@localhost:5434/storeai
+      REDIS_URL: redis://localhost:6381
+      S3_ENDPOINT: http://localhost:9002
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: storeai
+      S3_SECRET_KEY: storeai_dev_secret
+      S3_BUCKET: storeai-dev
+      S3_FORCE_PATH_STYLE: "true"
+      APP_URL: http://localhost:3000
+      SESSION_COOKIE_NAME: sa_session
+      AUTH_SECRET: ci_test_secret_not_sensitive_1234567890abcdef1234567890abcdef
+      SEED_ADMIN_EMAIL: admin@storeai.local
+      SEED_ADMIN_PASSWORD: ci_test_password_1234
+      SEED_TENANT_SLUG: workspace
+      SEED_TENANT_NAME: CI Workspace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: Write CI .env
+        run: |
+          cat > .env <<'EOF'
+          DATABASE_URL=postgres://storeai:storeai_dev@localhost:5434/storeai
+          REDIS_URL=redis://localhost:6381
+          S3_ENDPOINT=http://localhost:9002
+          S3_REGION=us-east-1
+          S3_ACCESS_KEY=storeai
+          S3_SECRET_KEY=storeai_dev_secret
+          S3_BUCKET=storeai-dev
+          S3_FORCE_PATH_STYLE=true
+          APP_URL=http://localhost:3000
+          SESSION_COOKIE_NAME=sa_session
+          AUTH_SECRET=ci_test_secret_not_sensitive_1234567890abcdef1234567890abcdef
+          SEED_ADMIN_EMAIL=admin@storeai.local
+          SEED_ADMIN_PASSWORD=ci_test_password_1234
+          SEED_TENANT_SLUG=workspace
+          SEED_TENANT_NAME=CI Workspace
+          EOF
+      - name: Migrate + seed
+        run: |
+          pnpm db:migrate
+          pnpm db:seed
+      - name: Build
+        run: pnpm build
+      - name: Test
+        run: pnpm test

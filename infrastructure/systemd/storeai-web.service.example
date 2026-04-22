@@ -24,12 +24,44 @@ TimeoutStartSec=60
 TimeoutStopSec=30
 StandardOutput=journal
 StandardError=journal
-# Basic hardening (tight enough to catch path-traversal writes, loose enough
-# for a Node app that reads node_modules + writes .next/cache)
-NoNewPrivileges=true
-ProtectSystem=full
-ProtectHome=false
+
+# --- Hardening ---------------------------------------------------------------
+# Filesystem
+ProtectSystem=strict
+ProtectHome=true
+# The repo lives under /home/<deploy-user>/, which ProtectHome=true would
+# normally hide. Make the repo readable, and only .next/cache writable.
+BindReadOnlyPaths={$REPO_DIR}
+ReadWritePaths={$REPO_DIR}/.next/cache /var/lib/storeai
 PrivateTmp=true
+PrivateDevices=true
+
+# Kernel + namespace surface
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Network / capabilities / syscalls
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+
+# NOTE: MemoryDenyWriteExecute=true is intentionally commented out.
+# V8 (Node.js's JIT) requires RWX memory pages to compile JavaScript; with
+# MDWX enabled the process crashes on first JIT compile. If your workload
+# runs successfully with --jitless or a future Node removes the need for
+# RWX, uncomment the line below.
+# MemoryDenyWriteExecute=true
 
 [Install]
 WantedBy=multi-user.target

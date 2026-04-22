@@ -12,51 +12,51 @@ Pick one:
 | --- | --- |
 | A laptop and want to try it locally | [Local dev](#local-dev) |
 | A fresh Ubuntu VPS + a domain name | [Full production (Caddy + Let's Encrypt)](#full-production-deploy) |
-| A fresh Ubuntu VPS, **no** domain yet, just want external IP access | [IP-only dev on a VPS](#ip-only-dev-on-a-vps) |
+| A fresh Ubuntu VPS, **no domain yet**, want to poke at it before going live | [Preview a VPS without exposing it](#preview-a-vps-without-exposing-it) |
 | An existing server with your own reverse proxy (Nginx/Traefik) | [Self-managed reverse proxy](#self-managed-reverse-proxy) |
+
+> **Never open port 3000 to the public internet.** The Node process is not meant to be a public-facing server. Use Caddy (or your own reverse proxy) on 443, with `HOST=127.0.0.1` on the app. The default in this repo binds to loopback — `HOST=0.0.0.0` must be an explicit opt-in, not the baseline.
 
 ---
 
 ## Local dev
 
-One box, localhost only, dev server (hot reload).
+One box, localhost only, dev server with hot reload.
 
 ```bash
 git clone https://github.com/benniethedev/storeai.git && cd storeai
 pnpm bootstrap      # installs deps, starts Postgres/Redis/MinIO, migrates, seeds
-pnpm start:all      # runs web + worker together
+pnpm dev:all        # runs the dev web + worker together (loopback-only)
 ```
 
 Open <http://localhost:3000>. Credentials are printed at the end of `pnpm bootstrap`.
 
+For a production-like smoke test on your laptop, use `pnpm build && pnpm start:all` instead of `pnpm dev:all`.
+
 ---
 
-## IP-only dev on a VPS
+## Preview a VPS without exposing it
 
-Fine for testing before you have a domain. **Not for public production** — you'll be running `pnpm dev` without TLS.
+You spun up a VPS and want to sanity-check it before DNS + TLS are ready. Do **not** open port 3000 to the world — tunnel it over SSH instead.
+
+On the VPS (bound to loopback — this is already the default):
 
 ```bash
-# 1. Install prerequisites (one-time)
-curl -fsSL https://get.docker.com | sh
-sudo apt install -y docker-compose-plugin
-sudo usermod -aG docker $USER && newgrp docker
-curl -fsSL https://fnm.vercel.app/install | bash && exec $SHELL
-fnm install 20 && fnm default 20
-npm i -g pnpm
-
-# 2. Clone + bootstrap
 git clone https://github.com/benniethedev/storeai.git && cd storeai
 pnpm bootstrap
-
-# 3. Open port 3000
-sudo ufw allow 3000/tcp
-#   and also open it in your cloud provider's firewall / security group
-
-# 4. Run the dev server
-pnpm dev
+pnpm build
+pnpm start:all
 ```
 
-Open `http://<vps-ip>:3000`. When you're ready to switch to real production, go to [Full production deploy](#full-production-deploy).
+From your laptop, open a local-forwarding tunnel:
+
+```bash
+ssh -L 3000:127.0.0.1:3000 ubuntu@<vps-ip>
+```
+
+Keep that shell open and browse to <http://localhost:3000> on your laptop — traffic travels through the SSH tunnel to the VPS's loopback interface. Port 3000 on the VPS stays closed to the internet.
+
+When you're ready to go live, proceed to [Full production deploy](#full-production-deploy).
 
 ---
 
