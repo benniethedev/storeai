@@ -251,6 +251,7 @@ MIT — see [`LICENSE`](./LICENSE). You can use this commercially, modify it, an
 
 ## See also
 
+- [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) — consolidated deploy guide (local, VPS-by-IP, full production, self-managed proxy, troubleshooting)
 - [`BUILD_LOG.md`](./BUILD_LOG.md) — the full design plan and what was built each phase
 - [`.env.example`](./.env.example) — all environment variables
 - [`infrastructure/docs/architecture.md`](./infrastructure/docs/architecture.md) — architecture deep-dive

@@ -13,6 +13,15 @@
         max_size 60MB
     }
 
+    # Defense-in-depth probe-path block. The app's middleware (apps/web/src/
+    # middleware.ts) does the same at the app layer; blocking here saves a
+    # hop, keeps scanner traffic out of the Node process entirely, and
+    # avoids it touching usage_logs or any app code path.
+    @probes {
+        path_regexp probes (?i)^/(\.env(\..*|/.*)?|\.git(/.*)?|\.(svn|hg|bzr)(/.*)?|\.DS_Store|\.aws/.*|\.ssh/.*|wp-(admin|login|content|includes|json).*|phpmyadmin.*|adminer.*|(xmlrpc|phpinfo|info|shell|webshell|c99|r57)\.(php|asp|aspx|jsp)|(vendor|storage|backup|dump|db)/[^/]*\.(zip|tar|gz|sql|bak|log|json)|server-status.*|cgi-bin/.*|etc/passwd|proc/self.*)$
+    }
+    respond @probes 404
+
     # Pass through to the Next.js server running on loopback
     reverse_proxy localhost:{$STOREAI_PORT} {
         # Longer timeouts for file uploads and long-running API-key requests
