@@ -54,9 +54,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # pnpm/action-setup@v4 reads the version from the root package.json's
+      # `packageManager` field — don't pass a `version:` input or it fails on
+      # any mismatch (we pin 10.27.0 there).
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
@@ -79,8 +80,12 @@ jobs:
       - name: Show infra status
         if: always()
         run: |
-          docker compose -f infrastructure/docker/docker-compose.yml --env-file .env ps
-          docker compose -f infrastructure/docker/docker-compose.yml --env-file .env logs --tail=30
+          if [ ! -f .env ]; then
+            echo "No .env — infra was not started; nothing to show."
+            exit 0
+          fi
+          docker compose -f infrastructure/docker/docker-compose.yml --env-file .env ps || true
+          docker compose -f infrastructure/docker/docker-compose.yml --env-file .env logs --tail=30 || true
 
       - name: Apply migrations + seed admin
         env:
@@ -104,4 +109,9 @@ jobs:
 
       - name: Tear down infra
         if: always()
-        run: docker compose -f infrastructure/docker/docker-compose.yml --env-file .env down -v
+        run: |
+          if [ ! -f .env ]; then
+            echo "No .env — infra was not started; nothing to tear down."
+            exit 0
+          fi
+          docker compose -f infrastructure/docker/docker-compose.yml --env-file .env down -v || true
