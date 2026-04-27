@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { and, desc, asc, eq, like, sql } from "drizzle-orm";
 import { getDb, records, projects } from "@storeai/db";
-import { createRecordSchema, paginationSchema } from "@storeai/shared";
-import { NotFoundError } from "@storeai/shared/errors";
+import { createRecordSchema, paginationSchema, MAX_RECORD_DATA_BYTES } from "@storeai/shared";
+import { AppError, NotFoundError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
@@ -10,6 +10,24 @@ import { enqueueAuditFanout } from "@storeai/queue";
 import { redisSafe } from "@/lib/redisSafe";
 
 export const runtime = "nodejs";
+
+class RecordTooLargeError extends AppError {
+  constructor(limit: number) {
+    super(
+      413,
+      "record_too_large",
+      `Record data exceeds the maximum allowed size of ${limit} bytes`,
+    );
+  }
+}
+
+function assertRecordDataSize(data: unknown): void {
+  const serialized = JSON.stringify(data ?? {});
+  // Byte length, not character length — JSONB sizing in Postgres is byte-based.
+  if (Buffer.byteLength(serialized, "utf8") > MAX_RECORD_DATA_BYTES) {
+    throw new RecordTooLargeError(MAX_RECORD_DATA_BYTES);
+  }
+}
 
 async function assertProjectInTenant(tenantId: string, projectId: string) {
   const db = getDb();
@@ -77,6 +95,7 @@ export const GET = tenantRoute({}, async ({ req, ctx }) => {
 export const POST = tenantRoute({}, async ({ req, ctx }) => {
   const body = await req.json();
   const input = createRecordSchema.parse(body);
+  assertRecordDataSize(input.data);
   await assertProjectInTenant(ctx.tenantId, input.projectId);
   const db = getDb();
   const [row] = await db
