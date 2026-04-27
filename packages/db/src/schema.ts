@@ -164,6 +164,11 @@ export const records = pgTable(
       t.createdAt,
     ),
     byTenantKey: index("records_tenant_key_idx").on(t.tenantId, t.key),
+    byTenantProjectKey: index("records_tenant_project_key_idx").on(
+      t.tenantId,
+      t.projectId,
+      t.key,
+    ),
   }),
 );
 

@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS "records_tenant_project_key_idx" ON "records" USING btree ("tenant_id","project_id","key");
