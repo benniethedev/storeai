@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+// Limits for clients (also documented in README/docs/API.md).
+export const MAX_RECORD_DATA_BYTES = 1 * 1024 * 1024;
+export const MAX_FILE_BYTES = 50 * 1024 * 1024;
+export const MAX_RECORD_KEY_LENGTH = 120;
+
 export const emailSchema = z.string().trim().toLowerCase().email().max(254);
 export const passwordSchema = z.string().min(8).max(256);
 export const slugSchema = z
