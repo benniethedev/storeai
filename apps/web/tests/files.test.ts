@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { POST as filesPOST, GET as filesGET } from "@/app/api/files/route";
 import { GET as fileGET, DELETE as fileDELETE } from "@/app/api/files/[id]/route";
+import { POST as projectsPOST } from "@/app/api/projects/route";
 import { buildRequest, expectOk, sessionCookies, csrfHeader } from "./helpers/http";
 import { resetDb, createUserAndTenant, uniqueSlug } from "./helpers/db";
 import { ensureBucket } from "@storeai/storage";
@@ -38,6 +39,9 @@ describe("file uploads", () => {
     const file = await expectOk(uploadRes);
     expect(file.id).toBeTruthy();
     expect(file.objectKey).toMatch(/^tenants\//);
+    // POST /api/files should return a usable downloadUrl atomically with
+    // the upload — clients shouldn't need to round-trip GET to fetch one.
+    expect(file.downloadUrl).toMatch(/^http/);
 
     const listRes = await filesGET(
       buildRequest("/api/files", { cookies }),
@@ -63,6 +67,43 @@ describe("file uploads", () => {
       { params: Promise.resolve({ id: file.id }) },
     );
     await expectOk(delRes);
+  });
+
+  it("accepts projectId as a top-level form field", async () => {
+    const { session } = await createUserAndTenant({ tenantSlug: uniqueSlug("ftl") });
+    const cookies = sessionCookies(session);
+    const headers = csrfHeader(session);
+
+    // Create a project to associate the upload with.
+    const projRes = await projectsPOST(
+      buildRequest("/api/projects", {
+        method: "POST",
+        body: { name: "Pp", slug: uniqueSlug("p") },
+        cookies,
+        headers,
+      }),
+      { params: Promise.resolve({}) },
+    );
+    const project = await expectOk(projRes);
+
+    // Top-level projectId, no `meta` field at all.
+    const fd = new FormData();
+    fd.append("file", new Blob(["hi"], { type: "text/plain" }), "x.txt");
+    fd.append("projectId", project.id);
+
+    const upRes = await filesPOST(
+      buildRequest("/api/files", {
+        method: "POST",
+        formData: fd,
+        cookies,
+        headers,
+      }),
+      { params: Promise.resolve({}) },
+    );
+    const file = await expectOk(upRes);
+    expect(file.projectId).toBe(project.id);
+    expect(file.downloadUrl).toMatch(/^http/);
+    expect(file.objectKey).toContain(`/projects/${project.id}/`);
   });
 
   it("other tenants cannot access the file", async () => {

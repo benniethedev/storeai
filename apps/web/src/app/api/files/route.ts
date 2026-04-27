@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getDb, files } from "@storeai/db";
 import {
   buildObjectKey,
@@ -41,6 +41,8 @@ export const GET = tenantRoute({}, async ({ ctx }) => {
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50MB for v1
 const ALLOWED_CT = /^[\w.\-+/]+$/;
 
+const DOWNLOAD_URL_TTL_SECONDS = 3600;
+
 export const POST = tenantRoute({}, async ({ req, ctx }) => {
   const form = await req.formData();
   const file = form.get("file");
@@ -50,7 +52,12 @@ export const POST = tenantRoute({}, async ({ req, ctx }) => {
   if (file.size > MAX_FILE_BYTES) throw new ValidationError("File too large");
   const contentType = file.type || "application/octet-stream";
   if (!ALLOWED_CT.test(contentType)) throw new ValidationError("Invalid content type");
-  const parsed = metaRaw ? metadataSchema.parse(JSON.parse(String(metaRaw))) : {};
+  const metaParsed = metaRaw ? metadataSchema.parse(JSON.parse(String(metaRaw))) : {};
+  // Accept projectId either nested in `meta` JSON or as a top-level form field.
+  const topLevelProjectId = form.get("projectId");
+  const projectIdRaw =
+    metaParsed.projectId ?? (typeof topLevelProjectId === "string" ? topLevelProjectId : null);
+  const parsed = metadataSchema.parse({ projectId: projectIdRaw || null });
 
   await ensureBucket();
   const objectKey = buildObjectKey({
@@ -92,5 +99,6 @@ export const POST = tenantRoute({}, async ({ req, ctx }) => {
     null,
     "enqueue:file-post-process",
   );
-  return ok(row);
+  const downloadUrl = await getSignedDownloadUrl(row.objectKey, DOWNLOAD_URL_TTL_SECONDS);
+  return ok({ ...row, downloadUrl });
 });
