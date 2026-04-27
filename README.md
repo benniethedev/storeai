@@ -149,6 +149,17 @@ curl -H "Authorization: Bearer $KEY" \
      http://localhost:3000/api/projects
 ```
 
+### Limits
+
+| Limit | Value |
+| --- | --- |
+| Max file upload | 50 MB |
+| Max record `data` (JSON, serialized) | 1 MB |
+| Max record `key` length | 120 chars |
+| `?key=` / `?keyPrefix=` query param length | 255 chars |
+
+Clients that exceed the per-record `data` limit get HTTP `413` with code `record_too_large`. See `docs/API.md` for full details, including filter params (`?key=`, `?keyPrefix=`) on `/api/records` and the `downloadUrl` returned by `POST /api/files`.
+
 ## Tests
 
 ```bash
