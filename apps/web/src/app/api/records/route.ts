@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, desc, asc, eq, sql } from "drizzle-orm";
+import { and, desc, asc, eq, like, sql } from "drizzle-orm";
 import { getDb, records, projects } from "@storeai/db";
 import { createRecordSchema, paginationSchema } from "@storeai/shared";
 import { NotFoundError } from "@storeai/shared/errors";
@@ -22,11 +22,22 @@ async function assertProjectInTenant(tenantId: string, projectId: string) {
 }
 
 const projectIdQuerySchema = z.string().uuid().optional();
+const keyFilterSchema = z.string().min(1).max(255).optional();
+
+// Postgres LIKE metacharacters need escaping so a prefix like "abc%" only
+// matches the literal string, not a wildcard pattern.
+function escapeLikePattern(input: string): string {
+  return input.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
 
 export const GET = tenantRoute({}, async ({ req, ctx }) => {
   const url = new URL(req.url);
   const projectId = projectIdQuerySchema.parse(
     url.searchParams.get("projectId") ?? undefined,
+  );
+  const key = keyFilterSchema.parse(url.searchParams.get("key") ?? undefined);
+  const keyPrefix = keyFilterSchema.parse(
+    url.searchParams.get("keyPrefix") ?? undefined,
   );
   const { page, pageSize, sort } = paginationSchema.parse({
     page: url.searchParams.get("page") ?? undefined,
@@ -38,6 +49,10 @@ export const GET = tenantRoute({}, async ({ req, ctx }) => {
   if (projectId) {
     await assertProjectInTenant(ctx.tenantId, projectId);
     conds.push(eq(records.projectId, projectId));
+  }
+  if (key !== undefined) conds.push(eq(records.key, key));
+  if (keyPrefix !== undefined) {
+    conds.push(like(records.key, `${escapeLikePattern(keyPrefix)}%`));
   }
 
   const orderCol = sort.includes("updated_at") ? records.updatedAt : records.createdAt;
