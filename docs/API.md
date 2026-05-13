@@ -37,12 +37,12 @@ Response (`200 OK`):
     "sizeBytes": 11,
     "contentType": "text/plain",
     "createdAt": "2026-04-27T12:00:00.000Z",
-    "downloadUrl": "https://<s3-host>/...&X-Amz-Expires=3600..."
+    "downloadUrl": "https://<app-host>/api/files/<id>/download"
   }
 }
 ```
 
-The `downloadUrl` is a short-lived presigned GET URL (1 hour TTL). Use it to fetch the bytes from S3/MinIO. To re-mint a URL later, call `GET /api/files/:id` (5-minute TTL) or `GET /api/files` (5-minute TTL).
+The `downloadUrl` is an app-hosted URL that streams the file back from StoreAI. It is stable for the record and is safe to hand to the dashboard or a proxying client. To re-mint a URL later, call `GET /api/files/:id` or `GET /api/files`.
 
 Errors:
 

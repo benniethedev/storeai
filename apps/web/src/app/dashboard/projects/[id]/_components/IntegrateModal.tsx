@@ -143,7 +143,7 @@ DELETE /api/projects/:id
 
 Files (if the app needs binary storage):
 POST   /api/files                    multipart/form-data with "file" field and "meta" JSON
-GET    /api/files                    List files; responses include a short-lived signed downloadUrl
+GET    /api/files                    List files; responses include an app-hosted downloadUrl
 GET    /api/files/:id                Same, single file
 DELETE /api/files/:id
 

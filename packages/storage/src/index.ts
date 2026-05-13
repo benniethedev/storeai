@@ -31,6 +31,11 @@ export function getBucket(): string {
   return getEnv().S3_BUCKET;
 }
 
+function getPublicEndpoint(): string {
+  const env = getEnv();
+  return env.S3_PUBLIC_ENDPOINT || env.S3_ENDPOINT;
+}
+
 export async function ensureBucket(): Promise<void> {
   const s3 = getS3();
   const bucket = getBucket();
@@ -85,8 +90,18 @@ export async function deleteObject(objectKey: string): Promise<void> {
 }
 
 export async function getSignedDownloadUrl(objectKey: string, ttlSeconds = 300): Promise<string> {
+  const env = getEnv();
+  const client = new S3Client({
+    region: env.S3_REGION,
+    endpoint: getPublicEndpoint(),
+    forcePathStyle: env.S3_FORCE_PATH_STYLE,
+    credentials: {
+      accessKeyId: env.S3_ACCESS_KEY,
+      secretAccessKey: env.S3_SECRET_KEY,
+    },
+  });
   return getSignedUrl(
-    getS3(),
+    client,
     new GetObjectCommand({ Bucket: getBucket(), Key: objectKey }),
     { expiresIn: ttlSeconds },
   );
@@ -97,8 +112,18 @@ export async function getSignedUploadUrl(args: {
   contentType: string;
   ttlSeconds?: number;
 }): Promise<string> {
+  const env = getEnv();
+  const client = new S3Client({
+    region: env.S3_REGION,
+    endpoint: getPublicEndpoint(),
+    forcePathStyle: env.S3_FORCE_PATH_STYLE,
+    credentials: {
+      accessKeyId: env.S3_ACCESS_KEY,
+      secretAccessKey: env.S3_SECRET_KEY,
+    },
+  });
   return getSignedUrl(
-    getS3(),
+    client,
     new PutObjectCommand({
       Bucket: getBucket(),
       Key: args.objectKey,

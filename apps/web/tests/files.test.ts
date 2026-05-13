@@ -22,7 +22,7 @@ function buildFileForm(name = "hello.txt", contents = "hello world", contentType
 }
 
 describe("file uploads", () => {
-  it("uploads, lists, gets a signed URL, and deletes a file — tenant isolated", async () => {
+  it("uploads, lists, gets a download URL, and deletes a file — tenant isolated", async () => {
     const { session } = await createUserAndTenant({ tenantSlug: uniqueSlug("f") });
     const cookies = sessionCookies(session);
     const headers = csrfHeader(session);
@@ -39,7 +39,7 @@ describe("file uploads", () => {
     const file = await expectOk(uploadRes);
     expect(file.id).toBeTruthy();
     expect(file.objectKey).toMatch(/^tenants\//);
-    // POST /api/files should return a usable downloadUrl atomically with
+    // POST /api/files should return a usable app-hosted downloadUrl atomically with
     // the upload — clients shouldn't need to round-trip GET to fetch one.
     expect(file.downloadUrl).toMatch(/^http/);
 

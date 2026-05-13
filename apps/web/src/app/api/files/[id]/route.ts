@@ -1,14 +1,18 @@
 import { and, eq } from "drizzle-orm";
 import { getDb, files } from "@storeai/db";
-import { deleteObject, getSignedDownloadUrl, assertTenantOwnsKey } from "@storeai/storage";
+import { deleteObject, assertTenantOwnsKey } from "@storeai/storage";
 import { NotFoundError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
 
+function fileDownloadUrl(req: Request, fileId: string) {
+  return new URL(`/api/files/${fileId}/download`, new URL(req.url).origin).toString();
+}
+
 export const runtime = "nodejs";
 
-export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
+export const GET = tenantRoute<{ id: string }>({}, async ({ req, ctx, params }) => {
   const db = getDb();
   const rows = await db
     .select()
@@ -18,7 +22,7 @@ export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
   const row = rows[0];
   if (!row) throw new NotFoundError();
   assertTenantOwnsKey(ctx.tenantId, row.objectKey);
-  const downloadUrl = await getSignedDownloadUrl(row.objectKey, 300);
+  const downloadUrl = fileDownloadUrl(req, row.id);
   return ok({ ...row, downloadUrl });
 });
 

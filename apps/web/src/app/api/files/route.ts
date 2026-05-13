@@ -4,7 +4,6 @@ import {
   buildObjectKey,
   deleteObject,
   ensureBucket,
-  getSignedDownloadUrl,
   putObject,
 } from "@storeai/storage";
 import { enqueueFilePostProcess } from "@storeai/queue";
@@ -21,7 +20,11 @@ const metadataSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
 });
 
-export const GET = tenantRoute({}, async ({ ctx }) => {
+function fileDownloadUrl(req: Request, fileId: string) {
+  return new URL(`/api/files/${fileId}/download`, new URL(req.url).origin).toString();
+}
+
+export const GET = tenantRoute({}, async ({ req, ctx }) => {
   const db = getDb();
   const rows = await db
     .select()
@@ -32,7 +35,7 @@ export const GET = tenantRoute({}, async ({ ctx }) => {
   const withUrls = await Promise.all(
     rows.map(async (f) => ({
       ...f,
-      downloadUrl: await getSignedDownloadUrl(f.objectKey, 300),
+      downloadUrl: fileDownloadUrl(req, f.id),
     })),
   );
   return ok(withUrls);
@@ -40,8 +43,6 @@ export const GET = tenantRoute({}, async ({ ctx }) => {
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50MB for v1
 const ALLOWED_CT = /^[\w.\-+/]+$/;
-
-const DOWNLOAD_URL_TTL_SECONDS = 3600;
 
 export const POST = tenantRoute({}, async ({ req, ctx }) => {
   const form = await req.formData();
@@ -99,6 +100,6 @@ export const POST = tenantRoute({}, async ({ req, ctx }) => {
     null,
     "enqueue:file-post-process",
   );
-  const downloadUrl = await getSignedDownloadUrl(row.objectKey, DOWNLOAD_URL_TTL_SECONDS);
+  const downloadUrl = fileDownloadUrl(req, row.id);
   return ok({ ...row, downloadUrl });
 });
