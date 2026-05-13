@@ -33,7 +33,8 @@ export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
 
   const response = await getObject(row.objectKey);
   const body = await bodyToBuffer(response.Body);
-  return new NextResponse(body, {
+  const webBody = new Uint8Array(body);
+  return new NextResponse(webBody, {
     status: 200,
     headers: {
       "Content-Type": row.contentType || "application/octet-stream",
