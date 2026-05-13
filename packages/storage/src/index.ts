@@ -89,6 +89,15 @@ export async function deleteObject(objectKey: string): Promise<void> {
   await getS3().send(new DeleteObjectCommand({ Bucket: getBucket(), Key: objectKey }));
 }
 
+export async function getObject(objectKey: string) {
+  return getS3().send(
+    new GetObjectCommand({
+      Bucket: getBucket(),
+      Key: objectKey,
+    }),
+  );
+}
+
 export async function getSignedDownloadUrl(objectKey: string, ttlSeconds = 300): Promise<string> {
   const env = getEnv();
   const client = new S3Client({

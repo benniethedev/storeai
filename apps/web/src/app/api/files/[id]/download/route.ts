@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getDb, files } from "@storeai/db";
-import { getBucket, getS3, assertTenantOwnsKey } from "@storeai/storage";
+import { getObject, assertTenantOwnsKey } from "@storeai/storage";
 import { NotFoundError } from "@storeai/shared/errors";
 import { tenantRoute } from "@/lib/routeHelpers";
 
@@ -32,12 +31,7 @@ export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
   if (!row) throw new NotFoundError();
   assertTenantOwnsKey(ctx.tenantId, row.objectKey);
 
-  const response = await getS3().send(
-    new GetObjectCommand({
-      Bucket: getBucket(),
-      Key: row.objectKey,
-    }),
-  );
+  const response = await getObject(row.objectKey);
   const body = await bodyToBuffer(response.Body);
   return new NextResponse(body, {
     status: 200,
