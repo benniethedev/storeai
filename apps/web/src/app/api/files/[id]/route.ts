@@ -5,14 +5,11 @@ import { NotFoundError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
-
-function fileDownloadUrl(req: Request, fileId: string) {
-  return new URL(`/api/files/${fileId}/download`, new URL(req.url).origin).toString();
-}
+import { appHostedFileDownloadUrl } from "@/lib/fileUrls";
 
 export const runtime = "nodejs";
 
-export const GET = tenantRoute<{ id: string }>({}, async ({ req, ctx, params }) => {
+export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
   const db = getDb();
   const rows = await db
     .select()
@@ -22,7 +19,7 @@ export const GET = tenantRoute<{ id: string }>({}, async ({ req, ctx, params }) 
   const row = rows[0];
   if (!row) throw new NotFoundError();
   assertTenantOwnsKey(ctx.tenantId, row.objectKey);
-  const downloadUrl = fileDownloadUrl(req, row.id);
+  const downloadUrl = appHostedFileDownloadUrl(row.id);
   return ok({ ...row, downloadUrl });
 });
 

@@ -11,6 +11,10 @@ interface FileRow {
   downloadUrl: string;
 }
 
+function isPreviewableImage(contentType: string) {
+  return contentType.startsWith("image/");
+}
+
 export default function FilesPage() {
   const [items, setItems] = useState<FileRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +81,7 @@ export default function FilesPage() {
           <thead>
             <tr>
               <th>Name</th>
+              <th>Preview</th>
               <th>Type</th>
               <th>Size</th>
               <th>Uploaded</th>
@@ -87,7 +92,7 @@ export default function FilesPage() {
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={7} className="muted">
                   No files yet.
                 </td>
               </tr>
@@ -96,12 +101,33 @@ export default function FilesPage() {
                 <tr key={f.id}>
                   <td>{f.originalName}</td>
                   <td>
+                    {isPreviewableImage(f.contentType) ? (
+                      <a
+                        href={f.downloadUrl}
+                        target="_blank"
+                        rel="noopener"
+                        className="file-preview"
+                        title={f.originalName}
+                      >
+                        <img
+                          src={f.downloadUrl}
+                          alt={f.originalName}
+                          className="file-preview-image"
+                        />
+                      </a>
+                    ) : (
+                      <div className="file-preview file-preview-fallback" aria-label={f.contentType}>
+                        <span>{f.contentType.split("/")[0]?.toUpperCase() || "FILE"}</span>
+                      </div>
+                    )}
+                  </td>
+                  <td>
                     <code>{f.contentType}</code>
                   </td>
                   <td className="muted">{(f.sizeBytes / 1024).toFixed(1)} KB</td>
                   <td className="muted">{new Date(f.createdAt).toLocaleString()}</td>
                   <td>
-                    <a href={f.downloadUrl} target="_blank" rel="noopener">
+                    <a href={f.downloadUrl} download={f.originalName}>
                       Download
                     </a>
                   </td>

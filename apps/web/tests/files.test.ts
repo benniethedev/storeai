@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { POST as filesPOST, GET as filesGET } from "@/app/api/files/route";
 import { GET as fileGET, DELETE as fileDELETE } from "@/app/api/files/[id]/route";
 import { POST as projectsPOST } from "@/app/api/projects/route";
+import { appHostedFileDownloadUrl } from "@/lib/fileUrls";
 import { buildRequest, expectOk, sessionCookies, csrfHeader } from "./helpers/http";
 import { resetDb, createUserAndTenant, uniqueSlug } from "./helpers/db";
 import { ensureBucket } from "@storeai/storage";
@@ -41,7 +42,7 @@ describe("file uploads", () => {
     expect(file.objectKey).toMatch(/^tenants\//);
     // POST /api/files should return a usable app-hosted downloadUrl atomically with
     // the upload — clients shouldn't need to round-trip GET to fetch one.
-    expect(file.downloadUrl).toMatch(/^http/);
+    expect(file.downloadUrl).toBe(appHostedFileDownloadUrl(file.id));
 
     const listRes = await filesGET(
       buildRequest("/api/files", { cookies }),
@@ -49,14 +50,14 @@ describe("file uploads", () => {
     );
     const list = await expectOk(listRes);
     expect(list.length).toBe(1);
-    expect(list[0].downloadUrl).toMatch(/^http/);
+    expect(list[0].downloadUrl).toBe(appHostedFileDownloadUrl(list[0].id));
 
     const getRes = await fileGET(
       buildRequest(`/api/files/${file.id}`, { cookies }),
       { params: Promise.resolve({ id: file.id }) },
     );
     const got = await expectOk(getRes);
-    expect(got.downloadUrl).toMatch(/^http/);
+    expect(got.downloadUrl).toBe(appHostedFileDownloadUrl(file.id));
 
     const delRes = await fileDELETE(
       buildRequest(`/api/files/${file.id}`, {
@@ -102,7 +103,7 @@ describe("file uploads", () => {
     );
     const file = await expectOk(upRes);
     expect(file.projectId).toBe(project.id);
-    expect(file.downloadUrl).toMatch(/^http/);
+    expect(file.downloadUrl).toBe(appHostedFileDownloadUrl(file.id));
     expect(file.objectKey).toContain(`/projects/${project.id}/`);
   });
 

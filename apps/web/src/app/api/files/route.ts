@@ -12,6 +12,7 @@ import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
 import { redisSafe } from "@/lib/redisSafe";
+import { appHostedFileDownloadUrl } from "@/lib/fileUrls";
 import { ValidationError } from "@storeai/shared/errors";
 
 export const runtime = "nodejs";
@@ -20,11 +21,7 @@ const metadataSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
 });
 
-function fileDownloadUrl(req: Request, fileId: string) {
-  return new URL(`/api/files/${fileId}/download`, new URL(req.url).origin).toString();
-}
-
-export const GET = tenantRoute({}, async ({ req, ctx }) => {
+export const GET = tenantRoute({}, async ({ ctx }) => {
   const db = getDb();
   const rows = await db
     .select()
@@ -35,7 +32,7 @@ export const GET = tenantRoute({}, async ({ req, ctx }) => {
   const withUrls = await Promise.all(
     rows.map(async (f) => ({
       ...f,
-      downloadUrl: fileDownloadUrl(req, f.id),
+      downloadUrl: appHostedFileDownloadUrl(f.id),
     })),
   );
   return ok(withUrls);
@@ -100,6 +97,6 @@ export const POST = tenantRoute({}, async ({ req, ctx }) => {
     null,
     "enqueue:file-post-process",
   );
-  const downloadUrl = fileDownloadUrl(req, row.id);
+  const downloadUrl = appHostedFileDownloadUrl(row.id);
   return ok({ ...row, downloadUrl });
 });
