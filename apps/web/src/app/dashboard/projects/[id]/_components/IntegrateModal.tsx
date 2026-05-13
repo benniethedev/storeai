@@ -147,6 +147,13 @@ GET    /api/files                    List files; responses include an app-hosted
 GET    /api/files/:id                Same, single file
 DELETE /api/files/:id
 
+Image handling notes:
+- Use the returned `downloadUrl` for previews and downloads. It is canonical and app-hosted.
+- Do not assume object-store or localhost URLs will be stable or public.
+- For image files, render thumbnails directly from `downloadUrl` when `contentType` starts with `image/` (this includes `image/svg+xml`).
+- For non-image files, show a generic file tile or link, not an image tag.
+- If an app needs to persist branding or avatar previews, store the file record ID and use `downloadUrl` at render time instead of copying the binary URL into app data.
+
 Working style:
 1. When modeling a new domain, pick a short "type" prefix for the key (e.g. "user:", "post:", "comment:"). Reuse consistently.
 2. Store the record's domain id INSIDE data.id if you want a stable external id, or use the returned record.id.
