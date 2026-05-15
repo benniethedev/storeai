@@ -13,6 +13,14 @@ Every response is JSON of the form `{ "ok": true, "data": ... }` or `{ "ok": fal
 | Record `key` length | 120 chars | `validation_error` | 400 |
 | `?key=` / `?keyPrefix=` query param | 255 chars | `validation_error` | 400 |
 
+### Large content strategy
+
+Use `/api/files` for large blobs and keep `record.data` small.
+
+- Good fits for records: indexes, settings, session state, usage counters, and other operational metadata.
+- Good fits for files: prompts, transcripts, reports, exports, attachments, logs, and other long-form content.
+- Persist the `fileId` in the related record and rehydrate the content through `GET /api/files/:id` or the returned `downloadUrl`.
+
 ## Files — `POST /api/files`
 
 Multipart upload. Required form parts:

@@ -160,6 +160,15 @@ curl -H "Authorization: Bearer $KEY" \
 
 Clients that exceed the per-record `data` limit get HTTP `413` with code `record_too_large`. See `docs/API.md` for full details, including filter params (`?key=`, `?keyPrefix=`) on `/api/records` and the `downloadUrl` returned by `POST /api/files`.
 
+### Large content strategy
+
+StoreAI is designed around small operational records, plus separate files for larger blobs.
+
+- Keep records lean: indexes, settings, session state, usage counters, and task metadata should stay inline.
+- Put long-form content in files: prompts, transcripts, generated reports, exports, attachments, and logs belong in `/api/files`.
+- Store a pointer in the record: save the returned `fileId` and any small metadata you need, rather than embedding the whole blob into `record.data`.
+- This keeps projects usable for many app shapes without inflating the core record size limit.
+
 ## Tests
 
 ```bash
