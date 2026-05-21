@@ -15,6 +15,7 @@ export const GET = tenantRoute({ requireRole: "admin", allowApiKey: false }, asy
       id: apiKeys.id,
       name: apiKeys.name,
       prefix: apiKeys.prefix,
+      scopes: apiKeys.scopes,
       createdAt: apiKeys.createdAt,
       lastUsedAt: apiKeys.lastUsedAt,
       revokedAt: apiKeys.revokedAt,
@@ -34,18 +35,20 @@ export const POST = tenantRoute(
       tenantId: ctx.tenantId,
       createdByUserId: ctx.user!.id,
       name: input.name,
+      scopes: input.scopes,
     });
     await writeAuditLog({
       ctx,
       action: "api_key.create",
       resourceType: "api_key",
       resourceId: created.apiKey.id,
-      metadata: { name: created.apiKey.name },
+      metadata: { name: created.apiKey.name, scopes: created.apiKey.scopes },
     });
     return ok({
       id: created.apiKey.id,
       name: created.apiKey.name,
       prefix: created.apiKey.prefix,
+      scopes: created.apiKey.scopes,
       plaintext: created.plaintext, // shown ONCE
       createdAt: created.apiKey.createdAt,
     });

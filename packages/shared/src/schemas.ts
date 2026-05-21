@@ -36,7 +36,38 @@ export const createTenantSchema = z.object({
 
 export const createApiKeySchema = z.object({
   name: z.string().trim().min(1).max(80),
+  scopes: z
+    .array(
+      z.enum([
+        "projects:read",
+        "projects:write",
+        "records:read",
+        "records:write",
+        "files:read",
+        "files:write",
+        "members:read",
+        "audit:read",
+        "usage:read",
+        "realtime:connect",
+      ]),
+    )
+    .optional(),
 });
+
+export const API_KEY_SCOPES = [
+  "projects:read",
+  "projects:write",
+  "records:read",
+  "records:write",
+  "files:read",
+  "files:write",
+  "members:read",
+  "audit:read",
+  "usage:read",
+  "realtime:connect",
+] as const;
+
+export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
 
 export const createProjectSchema = z.object({
   name: nameSchema,

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb, apiKeys, type ApiKey } from "@storeai/db";
+import type { ApiKeyScope } from "@storeai/shared";
 import { randomToken, hmacHex, constantTimeEqual } from "./tokens.js";
 
 export const API_KEY_PUBLIC_PREFIX = "sk_";
@@ -26,6 +27,7 @@ export async function createApiKey(args: {
   tenantId: string;
   createdByUserId: string;
   name: string;
+  scopes?: ApiKeyScope[];
 }): Promise<CreatedApiKey> {
   const secret = randomToken(24);
   const prefixRaw = randomAlphanum(PREFIX_LENGTH);
@@ -41,6 +43,7 @@ export async function createApiKey(args: {
       name: args.name,
       prefix,
       secretHash,
+      scopes: args.scopes ?? null,
     })
     .returning();
   if (!row) throw new Error("Failed to create API key");
@@ -57,6 +60,7 @@ export async function revokeApiKey(args: { apiKeyId: string; tenantId: string })
 
 export interface ResolvedApiKey {
   apiKey: ApiKey;
+  scopes: ApiKeyScope[] | null;
 }
 
 /**
@@ -87,5 +91,10 @@ export async function resolveApiKey(bearer: string): Promise<ResolvedApiKey | nu
   if (!constantTimeEqual(hashed, row.secretHash)) return null;
   // update last_used_at (best effort)
   await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, row.id));
-  return { apiKey: row };
+  return { apiKey: row, scopes: normalizeScopes(row.scopes) };
+}
+
+function normalizeScopes(value: unknown): ApiKeyScope[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.filter((scope): scope is ApiKeyScope => typeof scope === "string") as ApiKeyScope[];
 }

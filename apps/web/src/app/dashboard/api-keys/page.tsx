@@ -6,14 +6,29 @@ interface ApiKey {
   id: string;
   name: string;
   prefix: string;
+  scopes: string[] | null;
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
 }
 
+const SCOPES = [
+  "projects:read",
+  "projects:write",
+  "records:read",
+  "records:write",
+  "files:read",
+  "files:write",
+  "members:read",
+  "audit:read",
+  "usage:read",
+  "realtime:connect",
+];
+
 export default function ApiKeysPage() {
   const [items, setItems] = useState<ApiKey[]>([]);
   const [name, setName] = useState("");
+  const [selectedScopes, setSelectedScopes] = useState<string[]>(SCOPES);
   const [plaintext, setPlaintext] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,10 +50,14 @@ export default function ApiKeysPage() {
     try {
       const data = await apiJson<{ plaintext: string }>("/api/api-keys", {
         method: "POST",
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          scopes: selectedScopes.length === SCOPES.length ? undefined : selectedScopes,
+        }),
       });
       setPlaintext(data.plaintext);
       setName("");
+      setSelectedScopes(SCOPES);
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -71,6 +90,28 @@ export default function ApiKeysPage() {
           <label htmlFor="ak-name">Key name</label>
           <input id="ak-name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="My backend" />
         </div>
+        <div className="field">
+          <label>Scopes</label>
+          <div className="grid">
+            {SCOPES.map((scope) => (
+              <label key={scope} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={selectedScopes.includes(scope)}
+                  onChange={(e) => {
+                    setSelectedScopes((current) =>
+                      e.target.checked
+                        ? Array.from(new Set([...current, scope]))
+                        : current.filter((item) => item !== scope),
+                    );
+                  }}
+                />
+                <code>{scope}</code>
+              </label>
+            ))}
+          </div>
+          <p className="muted">All scopes selected creates a full-access key. Existing legacy keys stay full-access.</p>
+        </div>
         {error && <div className="error">{error}</div>}
         <button type="submit">Create API key</button>
       </form>
@@ -81,6 +122,7 @@ export default function ApiKeysPage() {
               <th>Name</th>
               <th>Prefix</th>
               <th>Created</th>
+              <th>Scopes</th>
               <th>Last used</th>
               <th>Status</th>
               <th></th>
@@ -89,7 +131,7 @@ export default function ApiKeysPage() {
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={7} className="muted">
                   No API keys yet.
                 </td>
               </tr>
@@ -101,6 +143,7 @@ export default function ApiKeysPage() {
                     <code>{k.prefix}…</code>
                   </td>
                   <td className="muted">{new Date(k.createdAt).toLocaleString()}</td>
+                  <td className="muted">{k.scopes?.length ? k.scopes.join(", ") : "full access"}</td>
                   <td className="muted">
                     {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : "never"}
                   </td>

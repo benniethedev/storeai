@@ -21,7 +21,7 @@ const metadataSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
 });
 
-export const GET = tenantRoute({}, async ({ ctx }) => {
+export const GET = tenantRoute({ requiredScope: "files:read" }, async ({ ctx }) => {
   const db = getDb();
   const rows = await db
     .select()
@@ -41,7 +41,7 @@ export const GET = tenantRoute({}, async ({ ctx }) => {
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50MB for v1
 const ALLOWED_CT = /^[\w.\-+/]+$/;
 
-export const POST = tenantRoute({}, async ({ req, ctx }) => {
+export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, ctx }) => {
   const form = await req.formData();
   const file = form.get("file");
   const metaRaw = form.get("meta");

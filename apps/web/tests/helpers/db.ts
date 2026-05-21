@@ -85,10 +85,16 @@ export async function addMember(args: {
     .values({ userId: args.userId, tenantId: args.tenantId, role: args.role ?? "member" });
 }
 
-export async function createTenantApiKey(args: { tenantId: string; userId: string; name?: string }) {
+export async function createTenantApiKey(args: {
+  tenantId: string;
+  userId: string;
+  name?: string;
+  scopes?: Parameters<typeof createApiKey>[0]["scopes"];
+}) {
   return createApiKey({
     tenantId: args.tenantId,
     createdByUserId: args.userId,
     name: args.name ?? "test-key",
+    scopes: args.scopes,
   });
 }

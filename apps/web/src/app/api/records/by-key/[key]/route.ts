@@ -39,7 +39,7 @@ async function assertProjectInTenant(tenantId: string, projectId: string) {
 }
 
 // GET /api/records/by-key/[key] - Retrieve a single record by its exact key
-export const GET = tenantRoute<{ key: string }>({}, async ({ ctx, params }) => {
+export const GET = tenantRoute<{ key: string }>({ requiredScope: "records:read" }, async ({ ctx, params }) => {
   const db = getDb();
   const rows = await db
     .select()
@@ -51,7 +51,7 @@ export const GET = tenantRoute<{ key: string }>({}, async ({ ctx, params }) => {
 });
 
 // PUT /api/records/by-key/[key] - Upsert: update if record exists, create if not
-export const PUT = tenantRoute<{ key: string }>({}, async ({ req, ctx, params }) => {
+export const PUT = tenantRoute<{ key: string }>({ requiredScope: "records:write" }, async ({ req, ctx, params }) => {
   const body = await req.json();
   const db = getDb();
 

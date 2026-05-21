@@ -9,7 +9,7 @@ import { appHostedFileDownloadUrl } from "@/lib/fileUrls";
 
 export const runtime = "nodejs";
 
-export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
+export const GET = tenantRoute<{ id: string }>({ requiredScope: "files:read" }, async ({ ctx, params }) => {
   const db = getDb();
   const rows = await db
     .select()
@@ -23,7 +23,7 @@ export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
   return ok({ ...row, downloadUrl });
 });
 
-export const DELETE = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
+export const DELETE = tenantRoute<{ id: string }>({ requiredScope: "files:write" }, async ({ ctx, params }) => {
   const db = getDb();
   const rows = await db
     .select()

@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { getDb, memberships, usageLogs, auditLogs, type Session, type User } from "@storeai/db";
 import { resolveSession, resolveApiKey } from "@storeai/auth";
-import type { TenantRole } from "@storeai/shared";
+import type { ApiKeyScope, TenantRole } from "@storeai/shared";
 import { ForbiddenError, UnauthorizedError } from "@storeai/shared/errors";
 import { env } from "@/env.server";
 
@@ -49,6 +49,7 @@ export interface TenantCtx {
   tenantId: string;
   user: User | null;
   apiKeyId: string | null;
+  apiKeyScopes: ApiKeyScope[] | null;
   session: Session | null;
   role: TenantRole;
   actorLabel: string;
@@ -93,6 +94,7 @@ export async function requireTenantContext(
       tenantId: res.apiKey.tenantId,
       user: null,
       apiKeyId: res.apiKey.id,
+      apiKeyScopes: res.scopes,
       session: null,
       role: "admin",
       actorLabel: `api_key:${res.apiKey.prefix}`,
@@ -108,6 +110,7 @@ export async function requireTenantContext(
     tenantId,
     user: s.user,
     apiKeyId: null,
+    apiKeyScopes: null,
     session: s.session,
     role,
     actorLabel: `user:${s.user.id}`,
@@ -125,6 +128,7 @@ export async function requireTenantContextForPage(): Promise<TenantCtx> {
     tenantId,
     user: s.user,
     apiKeyId: null,
+    apiKeyScopes: null,
     session: s.session,
     role,
     actorLabel: `user:${s.user.id}`,

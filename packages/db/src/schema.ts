@@ -104,6 +104,7 @@ export const apiKeys = pgTable(
     name: varchar("name", { length: 80 }).notNull(),
     prefix: varchar("prefix", { length: 16 }).notNull(),
     secretHash: varchar("secret_hash", { length: 64 }).notNull(),
+    scopes: jsonb("scopes").$type<string[] | null>(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

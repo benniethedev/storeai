@@ -9,7 +9,7 @@ import {
   type UserSessionCtx,
 } from "./context.js";
 import { ForbiddenError } from "@storeai/shared/errors";
-import { Permissions, type TenantRole } from "@storeai/shared";
+import { Permissions, type ApiKeyScope, type TenantRole } from "@storeai/shared";
 import { env } from "@/env.server";
 import { incrHashField, statusClass } from "./metrics.js";
 
@@ -23,6 +23,7 @@ export interface TenantRouteOptions {
   requireRole?: TenantRole;
   allowApiKey?: boolean;
   csrfExempt?: boolean;
+  requiredScope?: ApiKeyScope;
 }
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -54,6 +55,12 @@ export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Hand
               ? Permissions.canManageMembers(ctx.role)
               : Permissions.canRead(ctx.role);
         if (!ok) throw new ForbiddenError("Insufficient role");
+      }
+
+      if (ctx.kind === "api_key" && opts.requiredScope && ctx.apiKeyScopes) {
+        if (!ctx.apiKeyScopes.includes(opts.requiredScope)) {
+          throw new ForbiddenError(`API key missing required scope: ${opts.requiredScope}`);
+        }
       }
 
       const params = (await routeCtx.params) as T;

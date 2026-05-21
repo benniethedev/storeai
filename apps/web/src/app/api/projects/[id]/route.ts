@@ -8,7 +8,7 @@ import { writeAuditLog } from "@/lib/context";
 
 export const runtime = "nodejs";
 
-export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
+export const GET = tenantRoute<{ id: string }>({ requiredScope: "projects:read" }, async ({ ctx, params }) => {
   const db = getDb();
   const rows = await db
     .select()
@@ -19,7 +19,7 @@ export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
   return ok(rows[0]);
 });
 
-export const PATCH = tenantRoute<{ id: string }>({}, async ({ req, ctx, params }) => {
+export const PATCH = tenantRoute<{ id: string }>({ requiredScope: "projects:write" }, async ({ req, ctx, params }) => {
   const body = await req.json();
   const input = updateProjectSchema.parse(body);
   const db = getDb();
@@ -43,7 +43,7 @@ export const PATCH = tenantRoute<{ id: string }>({}, async ({ req, ctx, params }
   return ok(rows[0]);
 });
 
-export const DELETE = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
+export const DELETE = tenantRoute<{ id: string }>({ requiredScope: "projects:write" }, async ({ ctx, params }) => {
   const db = getDb();
   const rows = await db
     .delete(projects)

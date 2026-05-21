@@ -48,7 +48,7 @@ function escapeLikePattern(input: string): string {
   return input.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
-export const GET = tenantRoute({}, async ({ req, ctx }) => {
+export const GET = tenantRoute({ requiredScope: "records:read" }, async ({ req, ctx }) => {
   const url = new URL(req.url);
   const projectId = projectIdQuerySchema.parse(
     url.searchParams.get("projectId") ?? undefined,
@@ -92,7 +92,7 @@ export const GET = tenantRoute({}, async ({ req, ctx }) => {
   return ok({ items: rows, page, pageSize, total: count });
 });
 
-export const POST = tenantRoute({}, async ({ req, ctx }) => {
+export const POST = tenantRoute({ requiredScope: "records:write" }, async ({ req, ctx }) => {
   const body = await req.json();
   const input = createRecordSchema.parse(body);
   assertRecordDataSize(input.data);

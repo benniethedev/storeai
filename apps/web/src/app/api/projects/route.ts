@@ -8,7 +8,7 @@ import { writeAuditLog } from "@/lib/context";
 
 export const runtime = "nodejs";
 
-export const GET = tenantRoute({}, async ({ req, ctx }) => {
+export const GET = tenantRoute({ requiredScope: "projects:read" }, async ({ req, ctx }) => {
   const url = new URL(req.url);
   const { page, pageSize, sort } = paginationSchema.parse({
     page: url.searchParams.get("page") ?? undefined,
@@ -40,7 +40,7 @@ export const GET = tenantRoute({}, async ({ req, ctx }) => {
   return ok({ items: rows, page, pageSize, total: count });
 });
 
-export const POST = tenantRoute({}, async ({ req, ctx }) => {
+export const POST = tenantRoute({ requiredScope: "projects:write" }, async ({ req, ctx }) => {
   const body = await req.json();
   const input = createProjectSchema.parse(body);
   const db = getDb();

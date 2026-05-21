@@ -136,4 +136,42 @@ describe("API key authentication", () => {
     );
     expect(res.status).toBe(401);
   });
+
+  it("keeps legacy full-access keys working and enforces narrowed scopes", async () => {
+    const { user, tenant } = await createUserAndTenant({});
+    const legacyKey = await createTenantApiKey({ tenantId: tenant.id, userId: user.id });
+    const readOnlyKey = await createTenantApiKey({
+      tenantId: tenant.id,
+      userId: user.id,
+      scopes: ["projects:read"],
+    });
+
+    const legacyWrite = await projectsPOST(
+      buildRequest("/api/projects", {
+        method: "POST",
+        body: { name: "Legacy", slug: uniqueSlug("legacy") },
+        headers: { authorization: `Bearer ${legacyKey.plaintext}` },
+      }),
+      { params: Promise.resolve({}) },
+    );
+    await expectOk(legacyWrite);
+
+    const readAllowed = await projectsGET(
+      buildRequest("/api/projects", {
+        headers: { authorization: `Bearer ${readOnlyKey.plaintext}` },
+      }),
+      { params: Promise.resolve({}) },
+    );
+    await expectOk(readAllowed);
+
+    const writeDenied = await projectsPOST(
+      buildRequest("/api/projects", {
+        method: "POST",
+        body: { name: "Denied", slug: uniqueSlug("denied") },
+        headers: { authorization: `Bearer ${readOnlyKey.plaintext}` },
+      }),
+      { params: Promise.resolve({}) },
+    );
+    expect(writeDenied.status).toBe(403);
+  });
 });

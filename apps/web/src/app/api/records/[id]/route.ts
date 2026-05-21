@@ -26,7 +26,7 @@ function assertRecordDataSize(data: unknown): void {
   }
 }
 
-export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
+export const GET = tenantRoute<{ id: string }>({ requiredScope: "records:read" }, async ({ ctx, params }) => {
   const db = getDb();
   const rows = await db
     .select()
@@ -37,7 +37,7 @@ export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
   return ok(rows[0]);
 });
 
-export const PATCH = tenantRoute<{ id: string }>({}, async ({ req, ctx, params }) => {
+export const PATCH = tenantRoute<{ id: string }>({ requiredScope: "records:write" }, async ({ req, ctx, params }) => {
   const body = await req.json();
   const input = updateRecordSchema.parse(body);
   assertRecordDataSize(input.data);
@@ -61,7 +61,7 @@ export const PATCH = tenantRoute<{ id: string }>({}, async ({ req, ctx, params }
   return ok(rows[0]);
 });
 
-export const DELETE = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
+export const DELETE = tenantRoute<{ id: string }>({ requiredScope: "records:write" }, async ({ ctx, params }) => {
   const db = getDb();
   const rows = await db
     .delete(records)

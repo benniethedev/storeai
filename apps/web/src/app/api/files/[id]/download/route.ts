@@ -20,7 +20,7 @@ async function bodyToBuffer(body: unknown): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-export const GET = tenantRoute<{ id: string }>({}, async ({ ctx, params }) => {
+export const GET = tenantRoute<{ id: string }>({ requiredScope: "files:read" }, async ({ ctx, params }) => {
   const db = getDb();
   const rows = await db
     .select()
