@@ -152,4 +152,33 @@ describe("projects CRUD + audit/usage logs", () => {
     );
     expect(res.status).toBe(403);
   });
+
+  it("replays successful mutating responses for the same idempotency key", async () => {
+    const { session } = await createUserAndTenant({});
+    const cookies = sessionCookies(session);
+    const headers = { ...csrfHeader(session), "idempotency-key": "create-project-once" };
+    const body = { name: "Retry Safe", slug: uniqueSlug("retry") };
+
+    const firstRes = await projectsPOST(
+      buildRequest("/api/projects", { method: "POST", body, cookies, headers }),
+      { params: Promise.resolve({}) },
+    );
+    const first = await expectOk(firstRes);
+
+    const secondRes = await projectsPOST(
+      buildRequest("/api/projects", { method: "POST", body, cookies, headers }),
+      { params: Promise.resolve({}) },
+    );
+    const second = await expectOk(secondRes);
+
+    expect(secondRes.headers.get("x-storeai-idempotent-replay")).toBe("true");
+    expect(second.id).toBe(first.id);
+
+    const listRes = await projectsGET(
+      buildRequest("/api/projects", { cookies }),
+      { params: Promise.resolve({}) },
+    );
+    const list = await expectOk(listRes);
+    expect(list.items).toHaveLength(1);
+  });
 });

@@ -29,6 +29,13 @@
       "when": 1779403200000,
       "tag": "0003_api_key_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779403260000,
+      "tag": "0004_idempotency_keys",
+      "breakpoints": true
     }
   ]
 }

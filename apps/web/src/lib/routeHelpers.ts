@@ -8,6 +8,8 @@ import {
   type TenantCtx,
   type UserSessionCtx,
 } from "./context.js";
+import { and, eq } from "drizzle-orm";
+import { getDb, idempotencyKeys } from "@storeai/db";
 import { ForbiddenError } from "@storeai/shared/errors";
 import { Permissions, type ApiKeyScope, type TenantRole } from "@storeai/shared";
 import { env } from "@/env.server";
@@ -27,6 +29,7 @@ export interface TenantRouteOptions {
 }
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const IDEMPOTENCY_KEY_MAX = 120;
 
 export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Handler<T>) {
   return async (req: NextRequest, routeCtx: { params: Promise<T> }): Promise<NextResponse> => {
@@ -64,8 +67,18 @@ export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Hand
       }
 
       const params = (await routeCtx.params) as T;
+      const idempotency = await findIdempotentReplay(req, ctx);
+      if (idempotency) {
+        status = idempotency.status;
+        return NextResponse.json(idempotency.body, {
+          status,
+          headers: { "x-storeai-idempotent-replay": "true" },
+        });
+      }
+
       const res = await handler({ req, ctx, params });
       status = res.status;
+      await storeIdempotentResponse(req, ctx, res).catch(() => {});
       return res;
     } catch (err) {
       const res = handleError(err);
@@ -88,6 +101,66 @@ export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Hand
       }
     }
   };
+}
+
+async function findIdempotentReplay(
+  req: NextRequest,
+  ctx: TenantCtx,
+): Promise<{ status: number; body: unknown } | null> {
+  const key = normalizedIdempotencyKey(req);
+  if (!key) return null;
+  const route = new URL(req.url).pathname;
+  const rows = await getDb()
+    .select({
+      statusCode: idempotencyKeys.statusCode,
+      responseBody: idempotencyKeys.responseBody,
+    })
+    .from(idempotencyKeys)
+    .where(
+      and(
+        eq(idempotencyKeys.tenantId, ctx.tenantId),
+        eq(idempotencyKeys.key, key),
+        eq(idempotencyKeys.method, req.method.toUpperCase()),
+        eq(idempotencyKeys.route, route),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  return row ? { status: row.statusCode, body: row.responseBody } : null;
+}
+
+async function storeIdempotentResponse(
+  req: NextRequest,
+  ctx: TenantCtx,
+  res: NextResponse,
+): Promise<void> {
+  const key = normalizedIdempotencyKey(req);
+  if (!key || res.status < 200 || res.status >= 300) return;
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) return;
+
+  const body = await res.clone().json().catch(() => null);
+  if (!body) return;
+  await getDb()
+    .insert(idempotencyKeys)
+    .values({
+      tenantId: ctx.tenantId,
+      actorUserId: ctx.user?.id ?? null,
+      actorApiKeyId: ctx.apiKeyId,
+      key,
+      method: req.method.toUpperCase(),
+      route: new URL(req.url).pathname,
+      statusCode: res.status,
+      responseBody: body,
+    })
+    .onConflictDoNothing();
+}
+
+function normalizedIdempotencyKey(req: NextRequest): string | null {
+  if (!MUTATING.has(req.method.toUpperCase())) return null;
+  const key = req.headers.get("idempotency-key")?.trim();
+  if (!key) return null;
+  return key.slice(0, IDEMPOTENCY_KEY_MAX);
 }
 
 export function userRoute<T = unknown>(

@@ -13,6 +13,7 @@ import {
   usageLogs,
   sessions,
   opsTokens,
+  idempotencyKeys,
 } from "@storeai/db";
 import { hashPassword, createSession, createApiKey } from "@storeai/auth";
 
@@ -21,6 +22,7 @@ export async function resetDb(): Promise<void> {
   // Order matters only minimally given cascades; truncate for speed.
   await db.execute(sql`TRUNCATE
     ${usageLogs},
+    ${idempotencyKeys},
     ${auditLogs},
     ${files},
     ${records},
