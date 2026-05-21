@@ -60,6 +60,9 @@ importers:
       '@types/react-dom':
         specifier: 19.0.0
         version: 19.0.0
+      bullmq:
+        specifier: ^5.75.2
+        version: 5.75.2
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1

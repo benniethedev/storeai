@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/dashboard/members", label: "Members", minRole: "admin" as const },
   { href: "/dashboard/audit-logs", label: "Audit logs", minRole: "admin" as const },
   { href: "/dashboard/usage-logs", label: "Usage logs", minRole: "admin" as const },
+  { href: "/dashboard/updates", label: "Updates", minRole: "admin" as const },
 ];
 
 const rank = { owner: 3, admin: 2, member: 1 } as const;
