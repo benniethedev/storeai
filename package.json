@@ -12,6 +12,8 @@
     "start": "pnpm --filter @storeai/web start",
     "worker": "pnpm --filter @storeai/worker run dev",
     "worker:start": "pnpm --filter @storeai/worker run start",
+    "realtime": "pnpm --filter @storeai/realtime run dev",
+    "realtime:start": "pnpm --filter @storeai/realtime run start",
     "infra:up": "docker compose -f infrastructure/docker/docker-compose.yml --env-file .env up -d",
     "infra:down": "docker compose -f infrastructure/docker/docker-compose.yml --env-file .env down",
     "infra:logs": "docker compose -f infrastructure/docker/docker-compose.yml --env-file .env logs -f",

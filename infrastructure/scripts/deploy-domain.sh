@@ -8,7 +8,7 @@
 #   3. Writes /etc/caddy/Caddyfile from infrastructure/caddy/Caddyfile.example
 #   4. Updates .env: HOST=localhost, APP_URL=https://<domain>
 #   5. Runs `pnpm build` (production bundle)
-#   6. Writes two systemd units (storeai-web, storeai-worker)
+#   6. Writes systemd units (storeai-web, storeai-worker, storeai-realtime)
 #   7. Opens 80/443 in UFW if UFW is active; closes 3000 if previously open
 #   8. Enables + starts the services and reloads Caddy
 #   9. Verifies https://<domain>/api/health returns 200
@@ -136,6 +136,7 @@ DEPLOY_GROUP="$(id -gn "$DEPLOY_USER")"
 SERVICE_USER="$SERVICE_USER_ARG"
 SERVICE_PATH="$PNPM_DIR:$NODE_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 STOREAI_PORT="${PORT:-3000}"
+REALTIME_PORT="${REALTIME_PORT:-3010}"
 ok "Deploy user:    $DEPLOY_USER (group: $DEPLOY_GROUP)"
 ok "Service user:   $SERVICE_USER"
 ok "pnpm:           $PNPM_BIN"
@@ -194,6 +195,7 @@ cat <<EOF
   Caddyfile:       /etc/caddy/Caddyfile
   Systemd units:   /etc/systemd/system/storeai-web.service
                    /etc/systemd/system/storeai-worker.service
+                   /etc/systemd/system/storeai-realtime.service
 EOF
 if [ "$ASSUME_YES" != "true" ] && [ "$DRY_RUN" != "true" ]; then
   printf "Proceed? [y/N] "
@@ -224,11 +226,13 @@ CADDYFILE_RENDERED="$(
   DOMAIN="$DOMAIN" \
   ACME_EMAIL="$ACME_EMAIL" \
   STOREAI_PORT="$STOREAI_PORT" \
+  REALTIME_PORT="$REALTIME_PORT" \
   awk '
     {
       gsub(/\{\$DOMAIN\}/, ENVIRON["DOMAIN"])
       gsub(/\{\$ACME_EMAIL\}/, ENVIRON["ACME_EMAIL"])
       gsub(/\{\$STOREAI_PORT\}/, ENVIRON["STOREAI_PORT"])
+      gsub(/\{\$REALTIME_PORT\}/, ENVIRON["REALTIME_PORT"])
       print
     }
   ' "$CADDYFILE_SRC"
@@ -325,7 +329,7 @@ step "Installing systemd units"
 render_unit() {
   local src="$1"
   SERVICE_USER="$SERVICE_USER" REPO_DIR="$REPO_DIR" \
-  SERVICE_PATH="$SERVICE_PATH" PNPM_BIN="$PNPM_BIN" STOREAI_PORT="$STOREAI_PORT" \
+  SERVICE_PATH="$SERVICE_PATH" PNPM_BIN="$PNPM_BIN" STOREAI_PORT="$STOREAI_PORT" REALTIME_PORT="$REALTIME_PORT" \
   awk '
     {
       gsub(/\{\$SERVICE_USER\}/, ENVIRON["SERVICE_USER"])
@@ -333,6 +337,7 @@ render_unit() {
       gsub(/\{\$SERVICE_PATH\}/, ENVIRON["SERVICE_PATH"])
       gsub(/\{\$PNPM_BIN\}/, ENVIRON["PNPM_BIN"])
       gsub(/\{\$STOREAI_PORT\}/, ENVIRON["STOREAI_PORT"])
+      gsub(/\{\$REALTIME_PORT\}/, ENVIRON["REALTIME_PORT"])
       print
     }
   ' "$src"
@@ -351,6 +356,7 @@ write_unit() {
 }
 write_unit "$REPO_DIR/infrastructure/systemd/storeai-web.service.example"    /etc/systemd/system/storeai-web.service
 write_unit "$REPO_DIR/infrastructure/systemd/storeai-worker.service.example" /etc/systemd/system/storeai-worker.service
+write_unit "$REPO_DIR/infrastructure/systemd/storeai-realtime.service.example" /etc/systemd/system/storeai-realtime.service
 
 run "sudo systemctl daemon-reload"
 
@@ -391,8 +397,8 @@ fi
 
 # ---------- start services ----------
 step "Enabling and starting services"
-run "sudo systemctl enable storeai-web.service storeai-worker.service"
-run "sudo systemctl restart storeai-web.service storeai-worker.service"
+run "sudo systemctl enable storeai-web.service storeai-worker.service storeai-realtime.service"
+run "sudo systemctl restart storeai-web.service storeai-worker.service storeai-realtime.service"
 run "sudo systemctl restart caddy"
 
 # ---------- verify ----------
@@ -425,8 +431,10 @@ cat <<EOF
   Caddy          :  sudo systemctl status caddy
   Web service    :  sudo systemctl status storeai-web
   Worker service :  sudo systemctl status storeai-worker
+  Realtime       :  sudo systemctl status storeai-realtime
   Caddy logs     :  sudo journalctl -u caddy -f
   Web logs       :  sudo journalctl -u storeai-web -f
+  Realtime logs  :  sudo journalctl -u storeai-realtime -f
 
   Next steps:
     • Sign in with your seeded admin credentials at https://$DOMAIN

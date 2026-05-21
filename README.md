@@ -15,6 +15,7 @@ A self-hosted, multi-tenant backend platform for web apps and AI agents. Supabas
 ```
 apps/
   web                # Next.js 15 app (dashboard + /api routes)
+  realtime           # WebSocket event stream for agents and dashboards
   worker             # BullMQ worker process
 packages/
   shared             # Zod schemas, env, errors, RBAC helpers
@@ -97,6 +98,8 @@ pnpm worker          # in another
 | `pnpm start:all` | Production web + worker together (same binary systemd would run) |
 | `pnpm worker` | BullMQ worker in dev mode |
 | `pnpm worker:start` | BullMQ worker in production mode |
+| `pnpm realtime` | Realtime WebSocket server on 127.0.0.1:3010 |
+| `pnpm realtime:start` | Realtime WebSocket server in production mode |
 | `pnpm deploy:domain` | Attach a custom domain + Let's Encrypt HTTPS on Ubuntu/Debian (installs Caddy, writes systemd units, sets UFW default-deny) |
 | `pnpm test` | Run Vitest integration suite |
 | `pnpm test:e2e` | Run Playwright end-to-end tests |
@@ -126,6 +129,8 @@ Records include a monotonically increasing `version`. Updates may include `If-Ma
 Every project, record, and file mutation writes a durable tenant event. Poll `/api/events` or use the realtime service to watch changes.
 
 Admins can export a tenant backup with `GET /api/export`. The export includes projects, records, file metadata, events, audit logs, and usage logs. File bytes remain in S3/MinIO and should be backed up at the object-storage layer.
+
+Realtime runs as a separate WebSocket process. In production Caddy exposes it at `wss://<domain>/realtime`; locally it listens on `ws://127.0.0.1:3010`. Connect, send `{"type":"auth","token":"<api-key>","lastEventId":"optional-event-id"}`, then listen for `{"type":"event","event":...}` messages. Scoped keys need `realtime:connect`; legacy full-access keys keep working.
 
 | Route | Methods | Auth |
 | --- | --- | --- |

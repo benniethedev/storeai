@@ -59,6 +59,11 @@
     #     }
     # }
 
+    # WebSocket realtime stream. Clients connect to wss://<domain>/realtime.
+    handle_path /realtime {
+        reverse_proxy localhost:{$REALTIME_PORT}
+    }
+
     # Pass through to the Next.js server running on loopback
     reverse_proxy localhost:{$STOREAI_PORT} {
         # Longer timeouts for file uploads and long-running API-key requests
