@@ -30,8 +30,8 @@ StandardError=journal
 ProtectSystem=strict
 ProtectHome=true
 # The repo lives under /home/<deploy-user>/, which ProtectHome=true would
-# normally hide. Make the repo readable, and only .next/cache writable.
-BindReadOnlyPaths={$REPO_DIR}
+# normally hide. Make the repo and deploy ops state readable, and only .next/cache writable.
+BindReadOnlyPaths={$REPO_DIR} /home/ubuntu/storeai-ops
 ReadWritePaths={$REPO_DIR}/.next/cache /var/lib/storeai
 PrivateTmp=true
 PrivateDevices=true

@@ -61,6 +61,18 @@ describe("updates dashboard data", () => {
     expect(snapshot.failure).toBeNull();
     expect(snapshot.recentRuns).toEqual([]);
     expect(snapshot.selectedLogTail).toBeNull();
+    expect(snapshot.opsRoot.accessible).toBe(true);
+  });
+
+  it("returns an admin-visible diagnostic when the ops root is inaccessible", async () => {
+    await rm(tmpRoot!, { recursive: true, force: true });
+
+    const snapshot = await getUpdatesSnapshot(tmpRoot!);
+
+    expect(snapshot.lastDeploy).toBeNull();
+    expect(snapshot.recentRuns).toEqual([]);
+    expect(snapshot.opsRoot.accessible).toBe(false);
+    expect(snapshot.opsRoot.message).toContain("BindReadOnlyPaths");
   });
 
   it("parses fixed ops files and caps the selected log tail", async () => {

@@ -26,6 +26,11 @@ interface UpdatesSnapshot {
   failure: string | null;
   recentRuns: DeployRun[];
   selectedLogTail: string | null;
+  opsRoot?: {
+    path: string;
+    accessible: boolean;
+    message: string | null;
+  };
 }
 
 function shortSha(value?: string): string {
@@ -76,6 +81,15 @@ export default function UpdatesPage() {
         <h1>Updates</h1>
       </div>
       {error && <div className="error">{error}</div>}
+      {snapshot?.opsRoot && !snapshot.opsRoot.accessible && (
+        <div className="card" style={{ borderColor: "var(--danger)" }}>
+          <h2>Ops path not accessible</h2>
+          <p>{snapshot.opsRoot.message}</p>
+          <p className="muted">
+            Expected path: <code>{snapshot.opsRoot.path}</code>
+          </p>
+        </div>
+      )}
       {noData && <div className="card muted">No deploy data found.</div>}
 
       <div className="card">

@@ -31,6 +31,11 @@ export interface UpdatesSnapshot {
   failure: string | null;
   recentRuns: DeployRun[];
   selectedLogTail: string | null;
+  opsRoot: {
+    path: string;
+    accessible: boolean;
+    message: string | null;
+  };
 }
 
 export function updatesOpsRoot(): string {
@@ -75,6 +80,37 @@ function parseLastDeploy(raw: string | null): LastDeploy | null {
     return {
       status: "unreadable",
       reason: "last-deploy.json is not valid JSON",
+    };
+  }
+}
+
+async function inspectOpsRoot(root: string): Promise<UpdatesSnapshot["opsRoot"]> {
+  try {
+    const info = await stat(root);
+    if (!info.isDirectory()) {
+      return {
+        path: root,
+        accessible: false,
+        message: "Ops root exists but is not a directory.",
+      };
+    }
+    return { path: root, accessible: true, message: null };
+  } catch (err) {
+    if (isMissing(err)) {
+      return {
+        path: root,
+        accessible: false,
+        message:
+          "Ops root is missing or hidden from the web service. Check the systemd BindReadOnlyPaths setting.",
+      };
+    }
+    return {
+      path: root,
+      accessible: false,
+      message:
+        err && typeof err === "object" && "code" in err
+          ? `Ops root is not accessible: ${(err as { code?: string }).code}`
+          : "Ops root is not accessible.",
     };
   }
 }
@@ -132,7 +168,8 @@ async function listDeployRuns(logsDir: string): Promise<DeployRun[]> {
 
 export async function getUpdatesSnapshot(root = updatesOpsRoot()): Promise<UpdatesSnapshot> {
   const paths = fixedPaths(root);
-  const [lastDeployRaw, failureRaw, recentRuns] = await Promise.all([
+  const [opsRoot, lastDeployRaw, failureRaw, recentRuns] = await Promise.all([
+    inspectOpsRoot(root),
     readTextIfExists(paths.lastDeploy),
     readTextIfExists(paths.failure),
     listDeployRuns(paths.logsDir),
@@ -146,5 +183,6 @@ export async function getUpdatesSnapshot(root = updatesOpsRoot()): Promise<Updat
     failure: failureRaw?.trim() || null,
     recentRuns,
     selectedLogTail: latestLogRaw ? tailLog(latestLogRaw) : null,
+    opsRoot,
   };
 }
