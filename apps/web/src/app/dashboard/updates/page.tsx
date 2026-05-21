@@ -21,11 +21,17 @@ interface DeployRun {
   shortSha: string | null;
 }
 
+interface DeployCommit {
+  shortSha: string | null;
+  message: string;
+}
+
 interface UpdatesSnapshot {
   lastDeploy: LastDeploy | null;
   failure: string | null;
   recentRuns: DeployRun[];
   selectedLogTail: string | null;
+  includedCommits?: DeployCommit[];
   opsRoot?: {
     path: string;
     accessible: boolean;
@@ -116,7 +122,7 @@ export default function UpdatesPage() {
             </div>
             <div>
               <span className="muted">Migrations</span>
-              <p>{last.migrations_ran ? "ran" : "not run"}</p>
+              <p>{last.migrations_ran ? "Ran" : "No migrations needed"}</p>
             </div>
             <div>
               <span className="muted">Reason</span>
@@ -138,6 +144,32 @@ export default function UpdatesPage() {
           <pre style={{ whiteSpace: "pre-wrap", overflowX: "auto" }}>{snapshot.failure}</pre>
         </div>
       )}
+
+      <div className="card">
+        <h2>Included in deploy</h2>
+        {snapshot?.includedCommits && snapshot.includedCommits.length > 0 ? (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Commit</th>
+                <th>Message</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snapshot.includedCommits.map((commit, index) => (
+                <tr key={`${commit.shortSha ?? "message"}-${index}`}>
+                  <td>
+                    <code>{commit.shortSha ?? "-"}</code>
+                  </td>
+                  <td>{commit.message}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="muted">No included commit messages found.</p>
+        )}
+      </div>
 
       <div className="card">
         <h2>Recent deploy runs</h2>

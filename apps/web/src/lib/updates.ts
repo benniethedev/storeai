@@ -26,11 +26,17 @@ export interface DeployRun {
   shortSha: string | null;
 }
 
+export interface DeployCommit {
+  shortSha: string | null;
+  message: string;
+}
+
 export interface UpdatesSnapshot {
   lastDeploy: LastDeploy | null;
   failure: string | null;
   recentRuns: DeployRun[];
   selectedLogTail: string | null;
+  includedCommits: DeployCommit[];
   opsRoot: {
     path: string;
     accessible: boolean;
@@ -129,6 +135,30 @@ function tailLog(raw: string): string {
   return lines.slice(-LOG_TAIL_LINES).join("\n");
 }
 
+function parseIncludedCommits(raw: string | null): DeployCommit[] {
+  if (!raw) return [];
+  const lines = raw.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.includes("incoming commits:"));
+  if (start === -1) return [];
+
+  const commits: DeployCommit[] = [];
+  for (const line of lines.slice(start + 1)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (commits.length > 0) break;
+      continue;
+    }
+    if (trimmed.startsWith("[") || trimmed.endsWith(":")) break;
+
+    const match = trimmed.match(/^([a-f0-9]{7,40})\s+(.+)$/i);
+    commits.push({
+      shortSha: match ? match[1]!.slice(0, 12) : null,
+      message: match ? match[2]! : trimmed,
+    });
+  }
+  return commits;
+}
+
 async function listDeployRuns(logsDir: string): Promise<DeployRun[]> {
   let entries: string[];
   try {
@@ -183,6 +213,7 @@ export async function getUpdatesSnapshot(root = updatesOpsRoot()): Promise<Updat
     failure: failureRaw?.trim() || null,
     recentRuns,
     selectedLogTail: latestLogRaw ? tailLog(latestLogRaw) : null,
+    includedCommits: parseIncludedCommits(latestLogRaw),
     opsRoot,
   };
 }

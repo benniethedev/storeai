@@ -47,7 +47,14 @@ async function writeOpsFixture(root: string) {
   await writeFile(oldLog, "old\n");
   await writeFile(
     newLog,
-    Array.from({ length: 350 }, (_, i) => `line ${i + 1}`).join("\n"),
+    [
+      "=== deploy starting ===",
+      "incoming commits:",
+      "bbbbbbbbbbbb improve updates dashboard",
+      "cccccccccccc fix deploy diagnostics",
+      "",
+      ...Array.from({ length: 350 }, (_, i) => `line ${i + 1}`),
+    ].join("\n"),
   );
   await utimes(oldLog, new Date("2026-05-20T12:00:00.000Z"), new Date("2026-05-20T12:00:00.000Z"));
   await utimes(newLog, new Date("2026-05-21T12:00:00.000Z"), new Date("2026-05-21T12:00:00.000Z"));
@@ -86,6 +93,10 @@ describe("updates dashboard data", () => {
     expect(snapshot.recentRuns.length).toBe(2);
     expect(snapshot.recentRuns[0]!.filename).toBe("deploy-bbbbbbbb.log");
     expect(snapshot.recentRuns[0]!.shortSha).toBe("bbbbbbbb");
+    expect(snapshot.includedCommits).toEqual([
+      { shortSha: "bbbbbbbbbbbb", message: "improve updates dashboard" },
+      { shortSha: "cccccccccccc", message: "fix deploy diagnostics" },
+    ]);
     expect(snapshot.selectedLogTail).toContain("line 350");
     expect(snapshot.selectedLogTail).not.toContain("line 1\n");
   });
