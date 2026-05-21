@@ -1,6 +1,6 @@
 # StoreAI
 
-A self-hosted, multi-tenant backend platform for web apps. Supabase/Firebase-style feature set — auth, workspaces, API keys, CRUD APIs, file storage, background jobs, audit + usage logs, and an admin dashboard — all in one Next.js app backed by PostgreSQL, Redis, and MinIO.
+A self-hosted, multi-tenant backend platform for web apps and AI agents. Supabase/Firebase-style feature set — auth, workspaces, API keys, CRUD APIs, file storage, background jobs, audit + usage logs, deploy visibility, and an admin dashboard — all in one Next.js app backed by PostgreSQL, Redis, and MinIO.
 
 **Status:** v1 runs locally on macOS and passes 21 Vitest integration tests + 2 Playwright e2e tests. Designed to be self-hostable on Ubuntu via Docker Compose.
 
@@ -113,6 +113,7 @@ pnpm worker          # in another
 - **Storage:** MinIO with a single bucket; object keys are `tenants/<tenantId>/<projects/<projectId>>/<date>/<rand>-<name>`, enforced on access.
 - **Jobs:** BullMQ on Redis. Two example queues shipped: file post-processing (marks `files.processed_at`) and audit fanout.
 - **Validation:** Zod on every `body`, `searchParams`, and env var.
+- **Agent contract:** `/api/openapi.json` exposes a machine-readable API summary for local and hosted agents.
 
 ## HTTP API
 
@@ -124,6 +125,7 @@ All endpoints live under `/api`. Cookie-authenticated calls require the `x-sa-cs
 | `/api/auth/login` | POST | public |
 | `/api/auth/logout` | POST | session |
 | `/api/auth/me` | GET | session |
+| `/api/openapi.json` | GET | public |
 | `/api/tenants` | GET, POST | session |
 | `/api/tenants/switch` | POST | session |
 | `/api/api-keys` | GET, POST | session (admin) |
@@ -177,6 +179,17 @@ pnpm test:e2e   # Playwright — full signup → API key → CRUD flow in the br
 ```
 
 See `apps/web/tests/` for the suites. Covered areas: auth flows, tenant isolation, RBAC, API key auth + revocation, CRUD, file upload permissions, audit/usage log creation, queue job execution, member owner-protection, dashboard flows.
+
+## Agent integration
+
+StoreAI is intentionally small enough for local agents to use directly. Give an agent a tenant API key, point it at your StoreAI base URL, and let it read `/api/openapi.json` before making calls.
+
+Recommended agent behavior:
+
+- Store small operational state in records.
+- Store large prompts, transcripts, attachments, reports, and logs in files.
+- Use stable record keys so retries and follow-up tasks can find the same data.
+- Keep tenant API keys private and rotate/revoke them from the dashboard when a project is done.
 
 ## Troubleshooting
 
