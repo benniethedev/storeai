@@ -123,6 +123,8 @@ Mutating API calls may include `Idempotency-Key: <stable-key>`. StoreAI will rep
 
 Records include a monotonically increasing `version`. Updates may include `If-Match: <version>` or `x-storeai-record-version: <version>` to reject stale writes with `409 version_conflict`.
 
+Every project, record, and file mutation writes a durable tenant event. Poll `/api/events` or use the realtime service to watch changes.
+
 | Route | Methods | Auth |
 | --- | --- | --- |
 | `/api/auth/signup` | POST | public |

@@ -14,6 +14,7 @@ import {
   sessions,
   opsTokens,
   idempotencyKeys,
+  events,
 } from "@storeai/db";
 import { hashPassword, createSession, createApiKey } from "@storeai/auth";
 
@@ -23,6 +24,7 @@ export async function resetDb(): Promise<void> {
   await db.execute(sql`TRUNCATE
     ${usageLogs},
     ${idempotencyKeys},
+    ${events},
     ${auditLogs},
     ${files},
     ${records},

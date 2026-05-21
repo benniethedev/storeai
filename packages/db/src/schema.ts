@@ -287,6 +287,32 @@ export const idempotencyKeys = pgTable(
   }),
 );
 
+export const events = pgTable(
+  "events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorApiKeyId: uuid("actor_api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
+    type: varchar("type", { length: 80 }).notNull(),
+    resourceType: varchar("resource_type", { length: 60 }).notNull(),
+    resourceId: varchar("resource_id", { length: 120 }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    payload: jsonb("payload").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byTenantCreated: index("events_tenant_created_idx").on(t.tenantId, t.createdAt),
+    byTenantProjectCreated: index("events_tenant_project_created_idx").on(
+      t.tenantId,
+      t.projectId,
+      t.createdAt,
+    ),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Tenant = typeof tenants.$inferSelect;
@@ -305,3 +331,4 @@ export type UsageLog = typeof usageLogs.$inferSelect;
 export type OpsToken = typeof opsTokens.$inferSelect;
 export type NewOpsToken = typeof opsTokens.$inferInsert;
 export type IdempotencyKey = typeof idempotencyKeys.$inferSelect;
+export type Event = typeof events.$inferSelect;

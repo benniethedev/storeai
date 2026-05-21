@@ -6,6 +6,7 @@ import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
 import { expectedRecordVersion, VersionConflictError } from "@/lib/recordVersion";
+import { writeEvent } from "@/lib/events";
 
 export const runtime = "nodejs";
 
@@ -68,6 +69,14 @@ export const PATCH = tenantRoute<{ id: string }>({ requiredScope: "records:write
     resourceId: params.id,
     metadata: input,
   });
+  await writeEvent({
+    ctx,
+    type: "record.updated",
+    resourceType: "record",
+    resourceId: params.id,
+    projectId: rows[0].projectId,
+    payload: { key: rows[0].key, version: rows[0].version },
+  });
   return ok(rows[0]);
 });
 
@@ -76,13 +85,21 @@ export const DELETE = tenantRoute<{ id: string }>({ requiredScope: "records:writ
   const rows = await db
     .delete(records)
     .where(and(eq(records.tenantId, ctx.tenantId), eq(records.id, params.id)))
-    .returning({ id: records.id });
+    .returning({ id: records.id, projectId: records.projectId, key: records.key });
   if (!rows[0]) throw new NotFoundError();
   await writeAuditLog({
     ctx,
     action: "record.delete",
     resourceType: "record",
     resourceId: params.id,
+  });
+  await writeEvent({
+    ctx,
+    type: "record.deleted",
+    resourceType: "record",
+    resourceId: params.id,
+    projectId: rows[0].projectId,
+    payload: { key: rows[0].key },
   });
   return ok({ deleted: true });
 });

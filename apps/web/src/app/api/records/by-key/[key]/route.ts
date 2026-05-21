@@ -8,6 +8,7 @@ import { writeAuditLog } from "@/lib/context";
 import { enqueueAuditFanout } from "@storeai/queue";
 import { redisSafe } from "@/lib/redisSafe";
 import { expectedRecordVersion, VersionConflictError } from "@/lib/recordVersion";
+import { writeEvent } from "@/lib/events";
 
 export const runtime = "nodejs";
 
@@ -92,6 +93,14 @@ export const PUT = tenantRoute<{ key: string }>({ requiredScope: "records:write"
       resourceId: existing[0].id,
       metadata: input,
     });
+    await writeEvent({
+      ctx,
+      type: "record.updated",
+      resourceType: "record",
+      resourceId: rows[0]!.id,
+      projectId: rows[0]!.projectId,
+      payload: { key: rows[0]!.key, version: rows[0]!.version },
+    });
 
     return ok(rows[0]);
   } else {
@@ -132,6 +141,14 @@ export const PUT = tenantRoute<{ key: string }>({ requiredScope: "records:write"
       null,
       "enqueue:audit-fanout",
     );
+    await writeEvent({
+      ctx,
+      type: "record.created",
+      resourceType: "record",
+      resourceId: row.id,
+      projectId: row.projectId,
+      payload: { key: row.key, version: row.version },
+    });
 
     return ok(row);
   }

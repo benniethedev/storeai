@@ -5,6 +5,7 @@ import { ConflictError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
+import { writeEvent } from "@/lib/events";
 
 export const runtime = "nodejs";
 
@@ -67,6 +68,13 @@ export const POST = tenantRoute({ requiredScope: "projects:write" }, async ({ re
     resourceType: "project",
     resourceId: p.id,
     metadata: { slug: p.slug },
+  });
+  await writeEvent({
+    ctx,
+    type: "project.created",
+    resourceType: "project",
+    resourceId: p.id,
+    payload: { name: p.name, slug: p.slug },
   });
   return ok(p);
 });

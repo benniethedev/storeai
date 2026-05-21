@@ -8,6 +8,7 @@ import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
 import { enqueueAuditFanout } from "@storeai/queue";
 import { redisSafe } from "@/lib/redisSafe";
+import { writeEvent } from "@/lib/events";
 
 export const runtime = "nodejs";
 
@@ -122,5 +123,13 @@ export const POST = tenantRoute({ requiredScope: "records:write" }, async ({ req
     null,
     "enqueue:audit-fanout",
   );
+  await writeEvent({
+    ctx,
+    type: "record.created",
+    resourceType: "record",
+    resourceId: row.id,
+    projectId: row.projectId,
+    payload: { key: row.key, version: row.version },
+  });
   return ok(row);
 });

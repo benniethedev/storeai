@@ -11,6 +11,7 @@ import {
 import { POST as recordsPOST, GET as recordsGET } from "@/app/api/records/route";
 import { PATCH as recordPATCH } from "@/app/api/records/[id]/route";
 import { GET as auditGET } from "@/app/api/audit-logs/route";
+import { GET as eventsGET } from "@/app/api/events/route";
 import { GET as usageGET } from "@/app/api/usage-logs/route";
 import { buildRequest, expectOk, sessionCookies, csrfHeader } from "./helpers/http";
 import { resetDb, createUserAndTenant, uniqueSlug } from "./helpers/db";
@@ -114,6 +115,17 @@ describe("projects CRUD + audit/usage logs", () => {
     expect(actions).toContain("project.update");
     expect(actions).toContain("record.create");
     expect(actions).toContain("project.delete");
+
+    const eventsRes = await eventsGET(
+      buildRequest("/api/events", { cookies }),
+      { params: Promise.resolve({}) },
+    );
+    const eventList = await expectOk(eventsRes);
+    const eventTypes = eventList.items.map((event: { type: string }) => event.type);
+    expect(eventTypes).toContain("project.created");
+    expect(eventTypes).toContain("project.updated");
+    expect(eventTypes).toContain("record.created");
+    expect(eventTypes).toContain("project.deleted");
 
     // Usage logs should have at least one entry for each request
     const usageRes = await usageGET(

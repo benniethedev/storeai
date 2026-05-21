@@ -6,6 +6,7 @@ import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
 import { appHostedFileDownloadUrl } from "@/lib/fileUrls";
+import { writeEvent } from "@/lib/events";
 
 export const runtime = "nodejs";
 
@@ -41,6 +42,14 @@ export const DELETE = tenantRoute<{ id: string }>({ requiredScope: "files:write"
     resourceType: "file",
     resourceId: params.id,
     metadata: { objectKey: row.objectKey },
+  });
+  await writeEvent({
+    ctx,
+    type: "file.deleted",
+    resourceType: "file",
+    resourceId: params.id,
+    projectId: row.projectId,
+    payload: { objectKey: row.objectKey },
   });
   return ok({ deleted: true });
 });
