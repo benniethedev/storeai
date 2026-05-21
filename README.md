@@ -121,6 +121,8 @@ All endpoints live under `/api`. Cookie-authenticated calls require the `x-sa-cs
 
 Mutating API calls may include `Idempotency-Key: <stable-key>`. StoreAI will replay the first successful JSON response for the same tenant, route, method, and key, which makes agent/client retries safe.
 
+Records include a monotonically increasing `version`. Updates may include `If-Match: <version>` or `x-storeai-record-version: <version>` to reject stale writes with `409 version_conflict`.
+
 | Route | Methods | Auth |
 | --- | --- | --- |
 | `/api/auth/signup` | POST | public |

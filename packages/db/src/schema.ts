@@ -149,6 +149,7 @@ export const records = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     key: varchar("key", { length: 120 }).notNull(),
     data: jsonb("data").notNull().default(sql`'{}'::jsonb`),
+    version: integer("version").notNull().default(1),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),

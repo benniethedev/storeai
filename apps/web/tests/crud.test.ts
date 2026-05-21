@@ -9,6 +9,7 @@ import {
   DELETE as projectDELETE,
 } from "@/app/api/projects/[id]/route";
 import { POST as recordsPOST, GET as recordsGET } from "@/app/api/records/route";
+import { PATCH as recordPATCH } from "@/app/api/records/[id]/route";
 import { GET as auditGET } from "@/app/api/audit-logs/route";
 import { GET as usageGET } from "@/app/api/usage-logs/route";
 import { buildRequest, expectOk, sessionCookies, csrfHeader } from "./helpers/http";
@@ -180,5 +181,59 @@ describe("projects CRUD + audit/usage logs", () => {
     );
     const list = await expectOk(listRes);
     expect(list.items).toHaveLength(1);
+  });
+
+  it("increments record versions and rejects stale guarded writes", async () => {
+    const { session } = await createUserAndTenant({});
+    const cookies = sessionCookies(session);
+    const headers = csrfHeader(session);
+
+    const project = await expectOk(
+      await projectsPOST(
+        buildRequest("/api/projects", {
+          method: "POST",
+          body: { name: "Versioned", slug: uniqueSlug("ver") },
+          cookies,
+          headers,
+        }),
+        { params: Promise.resolve({}) },
+      ),
+    );
+    const created = await expectOk(
+      await recordsPOST(
+        buildRequest("/api/records", {
+          method: "POST",
+          body: { projectId: project.id, key: "v", data: { count: 1 } },
+          cookies,
+          headers,
+        }),
+        { params: Promise.resolve({}) },
+      ),
+    );
+    expect(created.version).toBe(1);
+
+    const updated = await expectOk(
+      await recordPATCH(
+        buildRequest(`/api/records/${created.id}`, {
+          method: "PATCH",
+          body: { data: { count: 2 } },
+          cookies,
+          headers: { ...headers, "x-storeai-record-version": "1" },
+        }),
+        { params: Promise.resolve({ id: created.id }) },
+      ),
+    );
+    expect(updated.version).toBe(2);
+
+    const stale = await recordPATCH(
+      buildRequest(`/api/records/${created.id}`, {
+        method: "PATCH",
+        body: { data: { count: 3 } },
+        cookies,
+        headers: { ...headers, "x-storeai-record-version": "1" },
+      }),
+      { params: Promise.resolve({ id: created.id }) },
+    );
+    expect(stale.status).toBe(409);
   });
 });

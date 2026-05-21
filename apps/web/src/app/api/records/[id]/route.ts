@@ -1,10 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb, records } from "@storeai/db";
 import { updateRecordSchema, MAX_RECORD_DATA_BYTES } from "@storeai/shared";
 import { AppError, NotFoundError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
+import { expectedRecordVersion, VersionConflictError } from "@/lib/recordVersion";
 
 export const runtime = "nodejs";
 
@@ -41,16 +42,25 @@ export const PATCH = tenantRoute<{ id: string }>({ requiredScope: "records:write
   const body = await req.json();
   const input = updateRecordSchema.parse(body);
   assertRecordDataSize(input.data);
+  const expectedVersion = expectedRecordVersion(req);
   const db = getDb();
-  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  const patch: Record<string, unknown> = {
+    updatedAt: new Date(),
+    version: sql`${records.version} + 1`,
+  };
   if (input.key !== undefined) patch.key = input.key;
   if (input.data !== undefined) patch.data = input.data;
+  const conds = [eq(records.tenantId, ctx.tenantId), eq(records.id, params.id)];
+  if (expectedVersion !== null) conds.push(eq(records.version, expectedVersion));
   const rows = await db
     .update(records)
     .set(patch)
-    .where(and(eq(records.tenantId, ctx.tenantId), eq(records.id, params.id)))
+    .where(and(...conds))
     .returning();
-  if (!rows[0]) throw new NotFoundError();
+  if (!rows[0]) {
+    if (expectedVersion !== null) throw new VersionConflictError();
+    throw new NotFoundError();
+  }
   await writeAuditLog({
     ctx,
     action: "record.update",

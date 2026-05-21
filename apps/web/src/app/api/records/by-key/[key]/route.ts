@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb, records, projects } from "@storeai/db";
 import { createRecordSchema, updateRecordSchema, MAX_RECORD_DATA_BYTES } from "@storeai/shared";
 import { AppError, NotFoundError } from "@storeai/shared/errors";
@@ -7,6 +7,7 @@ import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
 import { enqueueAuditFanout } from "@storeai/queue";
 import { redisSafe } from "@/lib/redisSafe";
+import { expectedRecordVersion, VersionConflictError } from "@/lib/recordVersion";
 
 export const runtime = "nodejs";
 
@@ -66,16 +67,23 @@ export const PUT = tenantRoute<{ key: string }>({ requiredScope: "records:write"
     // Update existing record
     const input = updateRecordSchema.parse(body);
     assertRecordDataSize(input.data);
+    const expectedVersion = expectedRecordVersion(req);
 
-    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    const patch: Record<string, unknown> = {
+      updatedAt: new Date(),
+      version: sql`${records.version} + 1`,
+    };
     if (input.key !== undefined) patch.key = input.key;
     if (input.data !== undefined) patch.data = input.data;
+    const conds = [eq(records.tenantId, ctx.tenantId), eq(records.id, existing[0].id)];
+    if (expectedVersion !== null) conds.push(eq(records.version, expectedVersion));
 
     const rows = await db
       .update(records)
       .set(patch)
-      .where(and(eq(records.tenantId, ctx.tenantId), eq(records.id, existing[0].id)))
+      .where(and(...conds))
       .returning();
+    if (!rows[0]) throw new VersionConflictError();
 
     await writeAuditLog({
       ctx,
