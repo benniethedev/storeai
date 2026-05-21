@@ -125,6 +125,8 @@ Records include a monotonically increasing `version`. Updates may include `If-Ma
 
 Every project, record, and file mutation writes a durable tenant event. Poll `/api/events` or use the realtime service to watch changes.
 
+Admins can export a tenant backup with `GET /api/export`. The export includes projects, records, file metadata, events, audit logs, and usage logs. File bytes remain in S3/MinIO and should be backed up at the object-storage layer.
+
 | Route | Methods | Auth |
 | --- | --- | --- |
 | `/api/auth/signup` | POST | public |
@@ -142,6 +144,7 @@ Every project, record, and file mutation writes a durable tenant event. Poll `/a
 | `/api/records/:id` | GET, PATCH, DELETE | session OR api-key |
 | `/api/files` | GET, POST (multipart) | session OR api-key |
 | `/api/files/:id` | GET, DELETE | session OR api-key |
+| `/api/export` | GET | session (admin) |
 | `/api/members` | GET, POST | session (admin) |
 | `/api/members/:id` | PATCH, DELETE | session (admin) |
 | `/api/audit-logs` | GET | session (admin) |

@@ -12,6 +12,7 @@ import { POST as recordsPOST, GET as recordsGET } from "@/app/api/records/route"
 import { PATCH as recordPATCH } from "@/app/api/records/[id]/route";
 import { GET as auditGET } from "@/app/api/audit-logs/route";
 import { GET as eventsGET } from "@/app/api/events/route";
+import { GET as exportGET } from "@/app/api/export/route";
 import { GET as usageGET } from "@/app/api/usage-logs/route";
 import { buildRequest, expectOk, sessionCookies, csrfHeader } from "./helpers/http";
 import { resetDb, createUserAndTenant, uniqueSlug } from "./helpers/db";
@@ -134,6 +135,16 @@ describe("projects CRUD + audit/usage logs", () => {
     );
     const usage = await expectOk(usageRes);
     expect(usage.length).toBeGreaterThan(3);
+
+    const exportRes = await exportGET(
+      buildRequest("/api/export", { cookies }),
+      { params: Promise.resolve({}) },
+    );
+    const exported = await expectOk(exportRes);
+    expect(exported.format).toBe("storeai.tenant-export.v1");
+    expect(exported.projects.length).toBeGreaterThanOrEqual(0);
+    expect(exported.records.length).toBe(0);
+    expect(exported.events.length).toBeGreaterThan(0);
   });
 
   it("rejects invalid project input (Zod)", async () => {
