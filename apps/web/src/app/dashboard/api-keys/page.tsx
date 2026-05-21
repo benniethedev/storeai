@@ -92,9 +92,9 @@ export default function ApiKeysPage() {
         </div>
         <div className="field">
           <label>Scopes</label>
-          <div className="grid">
+          <div className="scope-grid">
             {SCOPES.map((scope) => (
-              <label key={scope} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <label key={scope} className="scope-option">
                 <input
                   type="checkbox"
                   checked={selectedScopes.includes(scope)}
@@ -143,7 +143,15 @@ export default function ApiKeysPage() {
                     <code>{k.prefix}…</code>
                   </td>
                   <td className="muted">{new Date(k.createdAt).toLocaleString()}</td>
-                  <td className="muted">{k.scopes?.length ? k.scopes.join(", ") : "full access"}</td>
+                  <td className="muted">
+                    <div className="scope-list">
+                      {k.scopes?.length ? (
+                        k.scopes.map((scope) => <code key={scope}>{scope}</code>)
+                      ) : (
+                        "full access"
+                      )}
+                    </div>
+                  </td>
                   <td className="muted">
                     {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : "never"}
                   </td>
