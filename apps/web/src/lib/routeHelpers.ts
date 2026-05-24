@@ -68,7 +68,14 @@ export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Hand
       }
 
       const params = (await routeCtx.params) as T;
-      const idempotency = await findIdempotentReplay(req, ctx);
+      const idempotency = await findIdempotentReplay(req, ctx).catch((error) => {
+        console.error("[idempotency] replay lookup failed", {
+          route: new URL(req.url).pathname,
+          method: req.method,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      });
       if (idempotency) {
         status = idempotency.status;
         return NextResponse.json(idempotency.body, {
