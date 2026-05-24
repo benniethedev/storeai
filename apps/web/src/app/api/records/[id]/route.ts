@@ -22,7 +22,12 @@ class RecordTooLargeError extends AppError {
 
 class InvalidJsonError extends AppError {
   constructor(details: { prefix: string; length: number }) {
-    super(400, "invalid_json", "Request body must be valid JSON", details);
+    super(
+      400,
+      "invalid_json",
+      `Request body must be valid JSON (length ${details.length}, prefix ${JSON.stringify(details.prefix)})`,
+      details,
+    );
   }
 }
 
