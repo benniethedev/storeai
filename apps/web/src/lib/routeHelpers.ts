@@ -92,7 +92,7 @@ export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Hand
       const res = handleError(err);
       status = res.status;
       if (ctx) {
-        void writeErrorLogFromResponse(req, ctx, res).catch(() => {});
+        void writeErrorLogFromResponse(req, ctx, res, err).catch(() => {});
       }
       return res;
     } finally {
@@ -118,10 +118,13 @@ async function writeErrorLogFromResponse(
   req: NextRequest,
   ctx: TenantCtx,
   res: NextResponse,
+  err?: unknown,
 ): Promise<void> {
   const body = (await res.clone().json().catch(() => null)) as
     | { error?: { code?: string; message?: string; requestId?: string; stack?: string } }
     | null;
+  const rawError = err instanceof Error ? err : null;
+  const responseCode = body?.error?.code ?? `http_${res.status}`;
   await writeErrorLog({
     tenantId: ctx.tenantId,
     userId: ctx.user?.id ?? null,
@@ -129,10 +132,13 @@ async function writeErrorLogFromResponse(
     route: new URL(req.url).pathname,
     method: req.method,
     statusCode: res.status,
-    code: body?.error?.code ?? `http_${res.status}`,
-    message: body?.error?.message ?? "Request failed",
+    code: responseCode,
+    message:
+      responseCode === "internal_error" && rawError?.message
+        ? rawError.message
+        : body?.error?.message ?? "Request failed",
     requestId: body?.error?.requestId ?? res.headers.get("x-request-id"),
-    stack: body?.error?.stack,
+    stack: body?.error?.stack ?? rawError?.stack,
   });
 }
 
