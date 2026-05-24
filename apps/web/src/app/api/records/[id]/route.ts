@@ -20,6 +20,12 @@ class RecordTooLargeError extends AppError {
   }
 }
 
+class InvalidJsonError extends AppError {
+  constructor(details: { prefix: string; length: number }) {
+    super(400, "invalid_json", "Request body must be valid JSON", details);
+  }
+}
+
 function assertRecordDataSize(data: unknown): void {
   if (data === undefined) return;
   const serialized = JSON.stringify(data);
@@ -51,7 +57,16 @@ export const GET = tenantRoute<{ id: string }>({ requiredScope: "records:read" }
 });
 
 export const PATCH = tenantRoute<{ id: string }>({ requiredScope: "records:write" }, async ({ req, ctx, params }) => {
-  const body = await req.json();
+  const rawBody = await req.text();
+  let body: unknown;
+  try {
+    body = rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    throw new InvalidJsonError({
+      prefix: rawBody.slice(0, 80),
+      length: Buffer.byteLength(rawBody, "utf8"),
+    });
+  }
   const input = updateRecordSchema.parse(body);
   assertRecordDataSize(input.data);
   const expectedVersion = expectedRecordVersion(req);
