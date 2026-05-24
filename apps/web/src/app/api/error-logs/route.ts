@@ -1,5 +1,5 @@
 import { and, desc, eq, gte } from "drizzle-orm";
-import { getDb, auditLogs } from "@storeai/db";
+import { getDb, errorLogs } from "@storeai/db";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { logRetentionCutoff, pruneTenantLogs } from "@/lib/logRetention";
@@ -12,9 +12,9 @@ export const GET = tenantRoute({ requireRole: "admin" }, async ({ ctx }) => {
   const cutoff = logRetentionCutoff();
   const rows = await db
     .select()
-    .from(auditLogs)
-    .where(and(eq(auditLogs.tenantId, ctx.tenantId), gte(auditLogs.createdAt, cutoff)))
-    .orderBy(desc(auditLogs.createdAt))
+    .from(errorLogs)
+    .where(and(eq(errorLogs.tenantId, ctx.tenantId), gte(errorLogs.createdAt, cutoff)))
+    .orderBy(desc(errorLogs.createdAt))
     .limit(200);
   return ok(rows);
 });

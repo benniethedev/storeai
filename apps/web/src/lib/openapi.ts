@@ -7,7 +7,7 @@ export function storeAiOpenApiSpec(baseUrl = process.env.APP_URL || "http://loca
       title: "StoreAI API",
       version: "0.1.0",
       description:
-        "Self-hosted multi-tenant backend API for projects, JSON records, files, members, audit logs, usage logs, and deploy visibility.",
+        "Self-hosted multi-tenant backend API for projects, JSON records, files, members, audit logs, error logs, usage logs, and deploy visibility.",
     },
     servers: [{ url: baseUrl }],
     components: {
@@ -159,6 +159,9 @@ export function storeAiOpenApiSpec(baseUrl = process.env.APP_URL || "http://loca
       },
       "/api/audit-logs": {
         get: { summary: "List audit logs", responses: { "200": { description: "Audit logs" } } },
+      },
+      "/api/error-logs": {
+        get: { summary: "List error logs", responses: { "200": { description: "Error logs" } } },
       },
       "/api/usage-logs": {
         get: { summary: "List usage logs", responses: { "200": { description: "Usage logs" } } },

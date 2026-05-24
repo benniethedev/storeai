@@ -10,6 +10,7 @@ import {
   files,
   apiKeys,
   auditLogs,
+  errorLogs,
   usageLogs,
   sessions,
   opsTokens,
@@ -23,6 +24,7 @@ export async function resetDb(): Promise<void> {
   // Order matters only minimally given cascades; truncate for speed.
   await db.execute(sql`TRUNCATE
     ${usageLogs},
+    ${errorLogs},
     ${idempotencyKeys},
     ${events},
     ${auditLogs},

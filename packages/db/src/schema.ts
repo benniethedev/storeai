@@ -224,6 +224,28 @@ export const auditLogs = pgTable(
   }),
 );
 
+export const errorLogs = pgTable(
+  "error_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorApiKeyId: uuid("actor_api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
+    route: varchar("route", { length: 255 }).notNull(),
+    method: varchar("method", { length: 10 }).notNull(),
+    statusCode: integer("status_code").notNull(),
+    code: varchar("code", { length: 80 }).notNull(),
+    message: text("message").notNull(),
+    requestId: varchar("request_id", { length: 40 }),
+    stack: text("stack"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byTenantCreated: index("error_logs_tenant_created_idx").on(t.tenantId, t.createdAt),
+    byRouteCreated: index("error_logs_route_created_idx").on(t.route, t.createdAt),
+  }),
+);
+
 export const opsTokens = pgTable(
   "ops_tokens",
   {
@@ -327,6 +349,7 @@ export type NewRecord = typeof records.$inferInsert;
 export type FileRow = typeof files.$inferSelect;
 export type NewFile = typeof files.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
+export type ErrorLog = typeof errorLogs.$inferSelect;
 export type UsageLog = typeof usageLogs.$inferSelect;
 export type OpsToken = typeof opsTokens.$inferSelect;
 export type NewOpsToken = typeof opsTokens.$inferInsert;

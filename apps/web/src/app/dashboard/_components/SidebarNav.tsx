@@ -8,7 +8,7 @@ const LINKS = [
   { href: "/dashboard/files", label: "Files", minRole: "member" as const },
   { href: "/dashboard/api-keys", label: "API keys", minRole: "admin" as const },
   { href: "/dashboard/members", label: "Members", minRole: "admin" as const },
-  { href: "/dashboard/audit-logs", label: "Audit logs", minRole: "admin" as const },
+  { href: "/dashboard/logs", label: "Logs", minRole: "admin" as const },
   { href: "/dashboard/usage-logs", label: "Usage logs", minRole: "admin" as const },
   { href: "/dashboard/updates", label: "Updates", minRole: "admin" as const },
 ];

@@ -2,7 +2,7 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 import type { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { getDb, memberships, usageLogs, auditLogs, type Session, type User } from "@storeai/db";
+import { getDb, memberships, usageLogs, auditLogs, errorLogs, type Session, type User } from "@storeai/db";
 import { resolveSession, resolveApiKey } from "@storeai/auth";
 import type { ApiKeyScope, TenantRole } from "@storeai/shared";
 import { ForbiddenError, UnauthorizedError } from "@storeai/shared/errors";
@@ -206,5 +206,32 @@ export async function writeUsageLog(args: {
     method: args.method,
     statusCode: args.statusCode,
     durationMs: args.durationMs,
+  });
+}
+
+export async function writeErrorLog(args: {
+  tenantId: string | null;
+  userId: string | null;
+  apiKeyId: string | null;
+  route: string;
+  method: string;
+  statusCode: number;
+  code: string;
+  message: string;
+  requestId?: string | null;
+  stack?: string | null;
+}): Promise<void> {
+  const db = getDb();
+  await db.insert(errorLogs).values({
+    tenantId: args.tenantId,
+    actorUserId: args.userId,
+    actorApiKeyId: args.apiKeyId,
+    route: args.route.slice(0, 255),
+    method: args.method.slice(0, 10),
+    statusCode: args.statusCode,
+    code: args.code.slice(0, 80),
+    message: args.message,
+    requestId: args.requestId ?? null,
+    stack: args.stack ?? null,
   });
 }

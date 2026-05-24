@@ -50,6 +50,13 @@
       "when": 1779403380000,
       "tag": "0006_events",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779403440000,
+      "tag": "0007_error_logs",
+      "breakpoints": true
     }
   ]
 }

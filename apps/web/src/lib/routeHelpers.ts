@@ -4,6 +4,7 @@ import { handleError } from "./http.js";
 import {
   getUserSessionFromRequest,
   requireTenantContext,
+  writeErrorLog,
   writeUsageLog,
   type TenantCtx,
   type UserSessionCtx,
@@ -83,6 +84,9 @@ export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Hand
     } catch (err) {
       const res = handleError(err);
       status = res.status;
+      if (ctx) {
+        void writeErrorLogFromResponse(req, ctx, res).catch(() => {});
+      }
       return res;
     } finally {
       const duration = Date.now() - started;
@@ -101,6 +105,28 @@ export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Hand
       }
     }
   };
+}
+
+async function writeErrorLogFromResponse(
+  req: NextRequest,
+  ctx: TenantCtx,
+  res: NextResponse,
+): Promise<void> {
+  const body = (await res.clone().json().catch(() => null)) as
+    | { error?: { code?: string; message?: string; requestId?: string; stack?: string } }
+    | null;
+  await writeErrorLog({
+    tenantId: ctx.tenantId,
+    userId: ctx.user?.id ?? null,
+    apiKeyId: ctx.apiKeyId,
+    route: new URL(req.url).pathname,
+    method: req.method,
+    statusCode: res.status,
+    code: body?.error?.code ?? `http_${res.status}`,
+    message: body?.error?.message ?? "Request failed",
+    requestId: body?.error?.requestId ?? res.headers.get("x-request-id"),
+    stack: body?.error?.stack,
+  });
 }
 
 async function findIdempotentReplay(
