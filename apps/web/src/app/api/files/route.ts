@@ -7,7 +7,6 @@ import {
   putObject,
 } from "@storeai/storage";
 import { enqueueFilePostProcess } from "@storeai/queue";
-import { z } from "zod";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
@@ -17,10 +16,6 @@ import { ValidationError } from "@storeai/shared/errors";
 import { writeEventSafe } from "@/lib/events";
 
 export const runtime = "nodejs";
-
-const metadataSchema = z.object({
-  projectId: z.string().uuid().optional().nullable(),
-});
 
 export const GET = tenantRoute({ requiredScope: "files:read" }, async ({ ctx }) => {
   const db = getDb();
@@ -41,6 +36,18 @@ export const GET = tenantRoute({ requiredScope: "files:read" }, async ({ ctx }) 
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50MB for v1
 const ALLOWED_CT = /^[\w.\-+/]+$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function metadataProjectId(metaRaw: FormDataEntryValue | null): string | null {
+  if (!metaRaw) return null;
+  const parsed = JSON.parse(String(metaRaw)) as { projectId?: unknown } | null;
+  return typeof parsed?.projectId === "string" ? parsed.projectId : null;
+}
+
+function normalizeProjectId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  return UUID.test(value) ? value : null;
+}
 
 export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, ctx }) => {
   const form = await req.formData();
@@ -51,17 +58,14 @@ export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, 
   if (file.size > MAX_FILE_BYTES) throw new ValidationError("File too large");
   const contentType = file.type || "application/octet-stream";
   if (!ALLOWED_CT.test(contentType)) throw new ValidationError("Invalid content type");
-  const metaParsed = metaRaw ? metadataSchema.parse(JSON.parse(String(metaRaw))) : {};
   // Accept projectId either nested in `meta` JSON or as a top-level form field.
   const topLevelProjectId = form.get("projectId");
-  const projectIdRaw =
-    metaParsed.projectId ?? (typeof topLevelProjectId === "string" ? topLevelProjectId : null);
-  const parsed = metadataSchema.parse({ projectId: projectIdRaw || null });
+  const projectId = normalizeProjectId(metadataProjectId(metaRaw) ?? topLevelProjectId);
 
   await ensureBucket();
   const objectKey = buildObjectKey({
     tenantId: ctx.tenantId,
-    projectId: parsed.projectId ?? null,
+    projectId,
     originalName: file.name,
   });
   const buf = Buffer.from(await file.arrayBuffer());
@@ -72,7 +76,7 @@ export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, 
     .insert(files)
     .values({
       tenantId: ctx.tenantId,
-      projectId: parsed.projectId ?? null,
+      projectId,
       objectKey,
       originalName: file.name.slice(0, 255),
       sizeBytes: file.size,

@@ -107,6 +107,31 @@ describe("file uploads", () => {
     expect(file.objectKey).toContain(`/projects/${project.id}/`);
   });
 
+  it("ignores non-UUID project ids on file uploads", async () => {
+    const { session } = await createUserAndTenant({ tenantSlug: uniqueSlug("finvalid") });
+    const cookies = sessionCookies(session);
+    const headers = csrfHeader(session);
+
+    const fd = new FormData();
+    fd.append("file", new Blob(["# Design"], { type: "text/markdown" }), "DESIGN.md");
+    fd.append("projectId", "proj-4103a558");
+
+    const upRes = await filesPOST(
+      buildRequest("/api/files", {
+        method: "POST",
+        formData: fd,
+        cookies,
+        headers,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    const file = await expectOk(upRes);
+    expect(file.projectId).toBe(null);
+    expect(file.downloadUrl).toBe(appHostedFileDownloadUrl(file.id));
+    expect(file.objectKey).not.toContain("/projects/proj-4103a558/");
+  });
+
   it("other tenants cannot access the file", async () => {
     const a = await createUserAndTenant({ tenantSlug: uniqueSlug("a") });
     const b = await createUserAndTenant({ tenantSlug: uniqueSlug("b") });
