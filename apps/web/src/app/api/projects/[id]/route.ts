@@ -5,7 +5,7 @@ import { NotFoundError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
-import { writeEvent } from "@/lib/events";
+import { writeEventSafe } from "@/lib/events";
 
 export const runtime = "nodejs";
 
@@ -41,7 +41,7 @@ export const PATCH = tenantRoute<{ id: string }>({ requiredScope: "projects:writ
     resourceId: params.id,
     metadata: input,
   });
-  await writeEvent({
+  await writeEventSafe({
     ctx,
     type: "project.updated",
     resourceType: "project",
@@ -64,7 +64,7 @@ export const DELETE = tenantRoute<{ id: string }>({ requiredScope: "projects:wri
     resourceType: "project",
     resourceId: params.id,
   });
-  await writeEvent({
+  await writeEventSafe({
     ctx,
     type: "project.deleted",
     resourceType: "project",

@@ -47,6 +47,20 @@ export async function writeEvent(args: {
   return row;
 }
 
+export async function writeEventSafe(args: Parameters<typeof writeEvent>[0]): Promise<void> {
+  try {
+    await writeEvent(args);
+  } catch (error) {
+    console.error("[events] failed to write event", {
+      type: args.type,
+      resourceType: args.resourceType,
+      resourceId: args.resourceId,
+      projectId: args.projectId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export function eventChannel(tenantId: string): string {
   return `storeai:tenant:${tenantId}:events`;
 }

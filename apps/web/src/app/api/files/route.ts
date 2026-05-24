@@ -14,7 +14,7 @@ import { writeAuditLog } from "@/lib/context";
 import { redisSafe } from "@/lib/redisSafe";
 import { appHostedFileDownloadUrl } from "@/lib/fileUrls";
 import { ValidationError } from "@storeai/shared/errors";
-import { writeEvent } from "@/lib/events";
+import { writeEventSafe } from "@/lib/events";
 
 export const runtime = "nodejs";
 
@@ -98,7 +98,7 @@ export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, 
     null,
     "enqueue:file-post-process",
   );
-  await writeEvent({
+  await writeEventSafe({
     ctx,
     type: "file.uploaded",
     resourceType: "file",

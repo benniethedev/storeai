@@ -6,7 +6,7 @@ import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLog } from "@/lib/context";
 import { expectedRecordVersion, VersionConflictError } from "@/lib/recordVersion";
-import { writeEvent } from "@/lib/events";
+import { writeEventSafe } from "@/lib/events";
 
 export const runtime = "nodejs";
 
@@ -69,7 +69,7 @@ export const PATCH = tenantRoute<{ id: string }>({ requiredScope: "records:write
     resourceId: params.id,
     metadata: input,
   });
-  await writeEvent({
+  await writeEventSafe({
     ctx,
     type: "record.updated",
     resourceType: "record",
@@ -93,7 +93,7 @@ export const DELETE = tenantRoute<{ id: string }>({ requiredScope: "records:writ
     resourceType: "record",
     resourceId: params.id,
   });
-  await writeEvent({
+  await writeEventSafe({
     ctx,
     type: "record.deleted",
     resourceType: "record",
