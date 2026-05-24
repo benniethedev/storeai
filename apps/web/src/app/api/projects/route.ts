@@ -4,7 +4,7 @@ import { createProjectSchema, paginationSchema } from "@storeai/shared";
 import { ConflictError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
-import { writeAuditLog } from "@/lib/context";
+import { writeAuditLogSafe } from "@/lib/context";
 import { writeEventSafe } from "@/lib/events";
 
 export const runtime = "nodejs";
@@ -62,7 +62,7 @@ export const POST = tenantRoute({ requiredScope: "projects:write" }, async ({ re
     })
     .returning();
   if (!p) throw new Error("create project failed");
-  await writeAuditLog({
+  await writeAuditLogSafe({
     ctx,
     action: "project.create",
     resourceType: "project",

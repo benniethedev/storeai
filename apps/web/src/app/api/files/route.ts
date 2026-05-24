@@ -9,7 +9,7 @@ import {
 import { enqueueFilePostProcess } from "@storeai/queue";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
-import { writeAuditLog } from "@/lib/context";
+import { writeAuditLogSafe } from "@/lib/context";
 import { redisSafe } from "@/lib/redisSafe";
 import { appHostedFileDownloadUrl } from "@/lib/fileUrls";
 import { ValidationError } from "@storeai/shared/errors";
@@ -90,7 +90,7 @@ export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, 
     await deleteObject(objectKey).catch(() => {});
     throw new Error("failed to persist file metadata");
   }
-  await writeAuditLog({
+  await writeAuditLogSafe({
     ctx,
     action: "file.upload",
     resourceType: "file",

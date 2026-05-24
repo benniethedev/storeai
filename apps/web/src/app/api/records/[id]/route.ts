@@ -4,7 +4,7 @@ import { updateRecordSchema, MAX_RECORD_DATA_BYTES } from "@storeai/shared";
 import { AppError, NotFoundError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
-import { writeAuditLog } from "@/lib/context";
+import { writeAuditLogSafe } from "@/lib/context";
 import { expectedRecordVersion, VersionConflictError } from "@/lib/recordVersion";
 import { writeEventSafe } from "@/lib/events";
 
@@ -26,6 +26,17 @@ function assertRecordDataSize(data: unknown): void {
   if (Buffer.byteLength(serialized, "utf8") > MAX_RECORD_DATA_BYTES) {
     throw new RecordTooLargeError(MAX_RECORD_DATA_BYTES);
   }
+}
+
+function auditRecordUpdate(input: { key?: string; data?: unknown }) {
+  return {
+    ...(input.key !== undefined ? { key: input.key } : {}),
+    dataUpdated: input.data !== undefined,
+    dataBytes:
+      input.data === undefined
+        ? 0
+        : Buffer.byteLength(JSON.stringify(input.data), "utf8"),
+  };
 }
 
 export const GET = tenantRoute<{ id: string }>({ requiredScope: "records:read" }, async ({ ctx, params }) => {
@@ -62,12 +73,12 @@ export const PATCH = tenantRoute<{ id: string }>({ requiredScope: "records:write
     if (expectedVersion !== null) throw new VersionConflictError();
     throw new NotFoundError();
   }
-  await writeAuditLog({
+  await writeAuditLogSafe({
     ctx,
     action: "record.update",
     resourceType: "record",
     resourceId: params.id,
-    metadata: input,
+    metadata: auditRecordUpdate(input),
   });
   await writeEventSafe({
     ctx,
@@ -87,7 +98,7 @@ export const DELETE = tenantRoute<{ id: string }>({ requiredScope: "records:writ
     .where(and(eq(records.tenantId, ctx.tenantId), eq(records.id, params.id)))
     .returning({ id: records.id, projectId: records.projectId, key: records.key });
   if (!rows[0]) throw new NotFoundError();
-  await writeAuditLog({
+  await writeAuditLogSafe({
     ctx,
     action: "record.delete",
     resourceType: "record",

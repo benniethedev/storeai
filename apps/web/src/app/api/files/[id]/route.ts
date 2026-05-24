@@ -4,7 +4,7 @@ import { deleteObject, assertTenantOwnsKey } from "@storeai/storage";
 import { NotFoundError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
-import { writeAuditLog } from "@/lib/context";
+import { writeAuditLogSafe } from "@/lib/context";
 import { appHostedFileDownloadUrl } from "@/lib/fileUrls";
 import { writeEventSafe } from "@/lib/events";
 
@@ -36,7 +36,7 @@ export const DELETE = tenantRoute<{ id: string }>({ requiredScope: "files:write"
   assertTenantOwnsKey(ctx.tenantId, row.objectKey);
   await deleteObject(row.objectKey).catch((e) => console.warn("s3 delete failed", e));
   await db.delete(files).where(eq(files.id, row.id));
-  await writeAuditLog({
+  await writeAuditLogSafe({
     ctx,
     action: "file.delete",
     resourceType: "file",

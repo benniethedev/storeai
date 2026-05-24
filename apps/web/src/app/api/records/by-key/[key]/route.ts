@@ -4,7 +4,7 @@ import { createRecordSchema, updateRecordSchema, MAX_RECORD_DATA_BYTES } from "@
 import { AppError, NotFoundError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
-import { writeAuditLog } from "@/lib/context";
+import { writeAuditLogSafe } from "@/lib/context";
 import { enqueueAuditFanout } from "@storeai/queue";
 import { redisSafe } from "@/lib/redisSafe";
 import { expectedRecordVersion, VersionConflictError } from "@/lib/recordVersion";
@@ -28,6 +28,17 @@ function assertRecordDataSize(data: unknown): void {
   if (Buffer.byteLength(serialized, "utf8") > MAX_RECORD_DATA_BYTES) {
     throw new RecordTooLargeError(MAX_RECORD_DATA_BYTES);
   }
+}
+
+function auditRecordUpdate(input: { key?: string; data?: unknown }) {
+  return {
+    ...(input.key !== undefined ? { key: input.key } : {}),
+    dataUpdated: input.data !== undefined,
+    dataBytes:
+      input.data === undefined
+        ? 0
+        : Buffer.byteLength(JSON.stringify(input.data), "utf8"),
+  };
 }
 
 async function assertProjectInTenant(tenantId: string, projectId: string) {
@@ -86,12 +97,12 @@ export const PUT = tenantRoute<{ key: string }>({ requiredScope: "records:write"
       .returning();
     if (!rows[0]) throw new VersionConflictError();
 
-    await writeAuditLog({
+    await writeAuditLogSafe({
       ctx,
       action: "record.update",
       resourceType: "record",
       resourceId: existing[0].id,
-      metadata: input,
+      metadata: auditRecordUpdate(input),
     });
     await writeEventSafe({
       ctx,
@@ -128,7 +139,7 @@ export const PUT = tenantRoute<{ key: string }>({ requiredScope: "records:write"
 
     if (!row) throw new Error("Failed to create record");
 
-    const auditId = await writeAuditLog({
+    const auditId = await writeAuditLogSafe({
       ctx,
       action: "record.create",
       resourceType: "record",
@@ -136,11 +147,13 @@ export const PUT = tenantRoute<{ key: string }>({ requiredScope: "records:write"
       metadata: { key: row.key, projectId: row.projectId },
     });
 
-    await redisSafe(
-      () => enqueueAuditFanout({ tenantId: ctx.tenantId, auditLogId: auditId, action: "record.create" }),
-      null,
-      "enqueue:audit-fanout",
-    );
+    if (auditId) {
+      await redisSafe(
+        () => enqueueAuditFanout({ tenantId: ctx.tenantId, auditLogId: auditId, action: "record.create" }),
+        null,
+        "enqueue:audit-fanout",
+      );
+    }
     await writeEventSafe({
       ctx,
       type: "record.created",

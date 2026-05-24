@@ -158,6 +158,20 @@ export async function writeAuditLog(args: {
   return row!.id;
 }
 
+export async function writeAuditLogSafe(args: Parameters<typeof writeAuditLog>[0]): Promise<string | null> {
+  try {
+    return await writeAuditLog(args);
+  } catch (error) {
+    console.error("[audit] failed to write audit log", {
+      action: args.action,
+      resourceType: args.resourceType,
+      resourceId: args.resourceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 /**
  * Write a platform-level (no-tenant) audit log entry. Used for:
  *   - auth.login / auth.login.failed / auth.api_key.failed

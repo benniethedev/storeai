@@ -4,7 +4,7 @@ import { updateProjectSchema } from "@storeai/shared";
 import { NotFoundError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
-import { writeAuditLog } from "@/lib/context";
+import { writeAuditLogSafe } from "@/lib/context";
 import { writeEventSafe } from "@/lib/events";
 
 export const runtime = "nodejs";
@@ -34,7 +34,7 @@ export const PATCH = tenantRoute<{ id: string }>({ requiredScope: "projects:writ
     .where(and(eq(projects.tenantId, ctx.tenantId), eq(projects.id, params.id)))
     .returning();
   if (!rows[0]) throw new NotFoundError();
-  await writeAuditLog({
+  await writeAuditLogSafe({
     ctx,
     action: "project.update",
     resourceType: "project",
@@ -58,7 +58,7 @@ export const DELETE = tenantRoute<{ id: string }>({ requiredScope: "projects:wri
     .where(and(eq(projects.tenantId, ctx.tenantId), eq(projects.id, params.id)))
     .returning({ id: projects.id });
   if (!rows[0]) throw new NotFoundError();
-  await writeAuditLog({
+  await writeAuditLogSafe({
     ctx,
     action: "project.delete",
     resourceType: "project",

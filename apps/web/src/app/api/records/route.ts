@@ -5,7 +5,7 @@ import { createRecordSchema, paginationSchema, MAX_RECORD_DATA_BYTES } from "@st
 import { AppError, NotFoundError } from "@storeai/shared/errors";
 import { ok } from "@/lib/http";
 import { tenantRoute } from "@/lib/routeHelpers";
-import { writeAuditLog } from "@/lib/context";
+import { writeAuditLogSafe } from "@/lib/context";
 import { enqueueAuditFanout } from "@storeai/queue";
 import { redisSafe } from "@/lib/redisSafe";
 import { writeEventSafe } from "@/lib/events";
@@ -111,18 +111,20 @@ export const POST = tenantRoute({ requiredScope: "records:write" }, async ({ req
     })
     .returning();
   if (!row) throw new Error("create record failed");
-  const auditId = await writeAuditLog({
+  const auditId = await writeAuditLogSafe({
     ctx,
     action: "record.create",
     resourceType: "record",
     resourceId: row.id,
     metadata: { key: row.key, projectId: row.projectId },
   });
-  await redisSafe(
-    () => enqueueAuditFanout({ tenantId: ctx.tenantId, auditLogId: auditId, action: "record.create" }),
-    null,
-    "enqueue:audit-fanout",
-  );
+  if (auditId) {
+    await redisSafe(
+      () => enqueueAuditFanout({ tenantId: ctx.tenantId, auditLogId: auditId, action: "record.create" }),
+      null,
+      "enqueue:audit-fanout",
+    );
+  }
   await writeEventSafe({
     ctx,
     type: "record.created",
