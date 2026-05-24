@@ -22,6 +22,29 @@ class RecordTooLargeError extends AppError {
   }
 }
 
+class InvalidJsonError extends AppError {
+  constructor(details: { prefix: string; length: number }) {
+    super(
+      400,
+      "invalid_json",
+      `Request body must be valid JSON (length ${details.length}, prefix ${JSON.stringify(details.prefix)})`,
+      details,
+    );
+  }
+}
+
+async function parseJsonBody(req: Request): Promise<unknown> {
+  const rawBody = await req.text();
+  try {
+    return rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    throw new InvalidJsonError({
+      prefix: rawBody.slice(0, 80),
+      length: Buffer.byteLength(rawBody, "utf8"),
+    });
+  }
+}
+
 function assertRecordDataSize(data: unknown): void {
   const serialized = JSON.stringify(data ?? {});
   // Byte length, not character length — JSONB sizing in Postgres is byte-based.
@@ -94,7 +117,7 @@ export const GET = tenantRoute({ requiredScope: "records:read" }, async ({ req, 
 });
 
 export const POST = tenantRoute({ requiredScope: "records:write" }, async ({ req, ctx }) => {
-  const body = await req.json();
+  const body = await parseJsonBody(req);
   const input = createRecordSchema.parse(body);
   assertRecordDataSize(input.data);
   await assertProjectInTenant(ctx.tenantId, input.projectId);

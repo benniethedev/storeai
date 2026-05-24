@@ -22,6 +22,29 @@ class RecordTooLargeError extends AppError {
   }
 }
 
+class InvalidJsonError extends AppError {
+  constructor(details: { prefix: string; length: number }) {
+    super(
+      400,
+      "invalid_json",
+      `Request body must be valid JSON (length ${details.length}, prefix ${JSON.stringify(details.prefix)})`,
+      details,
+    );
+  }
+}
+
+async function parseJsonBody(req: Request): Promise<unknown> {
+  const rawBody = await req.text();
+  try {
+    return rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    throw new InvalidJsonError({
+      prefix: rawBody.slice(0, 80),
+      length: Buffer.byteLength(rawBody, "utf8"),
+    });
+  }
+}
+
 function assertRecordDataSize(data: unknown): void {
   if (data === undefined) return;
   const serialized = JSON.stringify(data);
@@ -65,7 +88,7 @@ export const GET = tenantRoute<{ key: string }>({ requiredScope: "records:read" 
 
 // PUT /api/records/by-key/[key] - Upsert: update if record exists, create if not
 export const PUT = tenantRoute<{ key: string }>({ requiredScope: "records:write" }, async ({ req, ctx, params }) => {
-  const body = await req.json();
+  const body = await parseJsonBody(req);
   const db = getDb();
 
   // Check for existing record with this key in the tenant
