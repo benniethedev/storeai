@@ -102,38 +102,8 @@ function cleanBaseUrl(value: string) {
   return value.replace(/\/+$/, "");
 }
 
-function isNodeRuntime() {
-  return typeof process !== "undefined" && Boolean(process.versions?.node);
-}
-
-function safeMultipartName(value: string) {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r|\n/g, "_");
-}
-
 function byteLength(value: string) {
   return new TextEncoder().encode(value).byteLength;
-}
-
-function concatBytes(chunks: Uint8Array[]) {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-  const body = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return body;
-}
-
-function utf8(value: string) {
-  return new TextEncoder().encode(value);
-}
-
-async function toBytes(value: StoreAIUploadBody): Promise<Uint8Array> {
-  if (typeof value === "string") return utf8(value);
-  if (value instanceof Blob) return new Uint8Array(await value.arrayBuffer());
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 }
 
 function inferContentType(input: UploadFileOptions) {
@@ -142,36 +112,7 @@ function inferContentType(input: UploadFileOptions) {
   return "application/octet-stream";
 }
 
-async function multipartBody(input: UploadFileOptions, defaultProjectId?: string) {
-  const boundary = `------------------------${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
-  const chunks: Uint8Array[] = [];
-  const projectId = input.projectId ?? defaultProjectId;
-  const appendField = (name: string, value: string) => {
-    chunks.push(
-      utf8(`--${boundary}\r\nContent-Disposition: form-data; name="${safeMultipartName(name)}"\r\n\r\n${value}\r\n`),
-    );
-  };
-  if (projectId) appendField("projectId", projectId);
-  if (input.meta !== undefined) appendField("meta", JSON.stringify(input.meta));
-  chunks.push(
-    utf8(
-      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${safeMultipartName(input.filename)}"\r\nContent-Type: ${inferContentType(input)}\r\n\r\n`,
-    ),
-  );
-  chunks.push(await toBytes(input.body));
-  chunks.push(utf8(`\r\n--${boundary}--\r\n`));
-  const body = concatBytes(chunks);
-  const headers: Record<string, string> = {
-    "Content-Type": `multipart/form-data; boundary=${boundary}`,
-  };
-  if (isNodeRuntime()) {
-    headers["Content-Length"] = String(body.byteLength);
-    headers.Connection = "close";
-  }
-  return { body, headers };
-}
-
-function browserFormData(input: UploadFileOptions, defaultProjectId?: string) {
+function uploadFormData(input: UploadFileOptions, defaultProjectId?: string) {
   const form = new FormData();
   const body = input.body instanceof Blob ? input.body : new Blob([input.body as BlobPart], { type: inferContentType(input) });
   form.append("file", body, input.filename);
@@ -313,17 +254,9 @@ export class StoreAI {
     let lastError: unknown;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        if (!isNodeRuntime()) {
-          return await this.api<StoreAIFile>("/api/files", {
-            method: "POST",
-            body: browserFormData(input, this.projectId),
-          });
-        }
-        const upload = await multipartBody(input, this.projectId);
         return await this.api<StoreAIFile>("/api/files", {
           method: "POST",
-          headers: upload.headers,
-          body: upload.body,
+          body: uploadFormData(input, this.projectId),
         });
       } catch (error) {
         lastError = error;
