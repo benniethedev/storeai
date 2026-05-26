@@ -32,7 +32,7 @@ await store.records.create("project-doc:spinrec", {
 });
 ```
 
-The SDK uses a stable multipart upload path in Node and browser-safe `FormData` in the browser.
+The SDK uses native `FormData` in Node and browsers. Let `fetch` set the multipart boundary; do not hand-roll multipart request bodies.
 
 ## Records
 

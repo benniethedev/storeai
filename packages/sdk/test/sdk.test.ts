@@ -9,7 +9,7 @@ function json(body: unknown, status = 200) {
 }
 
 async function main() {
-  const calls: Array<{ url: string; init: RequestInit & { headers: Record<string, string>; body?: Uint8Array } }> = [];
+  const calls: Array<{ url: string; init: RequestInit & { headers: Record<string, string>; body?: BodyInit } }> = [];
   const store = new StoreAI({
     baseUrl: "https://storeai.example/",
     apiKey: "sk_test",
@@ -57,16 +57,18 @@ async function main() {
 
   const upload = calls[0]!;
   assert.equal(upload.init.headers.Authorization, "Bearer sk_test");
-  assert.match(upload.init.headers["Content-Type"], /^multipart\/form-data; boundary=/);
-  assert.equal(upload.init.headers["Content-Length"], String(upload.init.body!.byteLength));
-  assert.equal(upload.init.headers.Connection, "close");
+  assert.ok(upload.init.body instanceof FormData);
+  assert.equal(upload.init.headers["Content-Type"], undefined);
+  assert.equal(upload.init.headers["Content-Length"], undefined);
 
-  const multipart = new TextDecoder().decode(upload.init.body);
-  assert.match(multipart, /name="projectId"/);
-  assert.match(multipart, /project-123/);
-  assert.match(multipart, /name="meta"/);
-  assert.match(multipart, /filename="screen.png"/);
-  assert.match(multipart, /Content-Type: image\/png/);
+  const form = upload.init.body;
+  assert.equal(form.get("projectId"), "project-123");
+  assert.equal(form.get("meta"), JSON.stringify({ kind: "screenshot" }));
+  const uploadedFile = form.get("file");
+  assert.ok(uploadedFile instanceof File);
+  assert.equal(uploadedFile.name, "screen.png");
+  assert.equal(uploadedFile.type, "image/png");
+  assert.deepEqual(new Uint8Array(await uploadedFile.arrayBuffer()), new Uint8Array([1, 2, 3]));
 
   const record = await store.records.create("asset:1", { fileId: file.id });
   assert.equal(record.id, "rec-1");
