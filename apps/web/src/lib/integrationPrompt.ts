@@ -139,14 +139,53 @@ export async function deleteRecord(id: string) {
   return api(\`/api/records/\${id}\`, { method: "DELETE" });
 }
 
+function multipartSafeName(value: string) {
+  return value.replace(/[\\r\\n"]/g, "_").replace(/\\\\/g, "\\\\\\\\");
+}
+
+async function multipartUploadBody(input: {
+  value: Blob | Buffer | string;
+  filename: string;
+  contentType: string;
+  fields?: Record<string, string>;
+}) {
+  const boundary = \`------------------------\${Math.random().toString(16).slice(2)}\${Date.now().toString(16)}\`;
+  const chunks: Buffer[] = [];
+  for (const [name, value] of Object.entries(input.fields ?? {})) {
+    chunks.push(Buffer.from(
+      \`--\${boundary}\\r\\nContent-Disposition: form-data; name="\${multipartSafeName(name)}"\\r\\n\\r\\n\${value}\\r\\n\`,
+      "utf8",
+    ));
+  }
+  chunks.push(Buffer.from(
+    \`--\${boundary}\\r\\nContent-Disposition: form-data; name="file"; filename="\${multipartSafeName(input.filename)}"\\r\\nContent-Type: \${input.contentType}\\r\\n\\r\\n\`,
+    "utf8",
+  ));
+  if (input.value instanceof Blob) chunks.push(Buffer.from(await input.value.arrayBuffer()));
+  else chunks.push(Buffer.isBuffer(input.value) ? input.value : Buffer.from(input.value, "utf8"));
+  chunks.push(Buffer.from(\`\\r\\n--\${boundary}--\\r\\n\`, "utf8"));
+  const body = Buffer.concat(chunks);
+  return {
+    body,
+    headers: {
+      "Content-Type": \`multipart/form-data; boundary=\${boundary}\`,
+      "Content-Length": String(body.byteLength),
+      Connection: "close",
+    },
+  };
+}
+
 async function uploadJsonFile(name: string, value: string) {
-  const form = new FormData();
-  form.append("file", new Blob([value], { type: "application/json" }), name);
-  form.append("projectId", PROJECT_ID);
+  const upload = await multipartUploadBody({
+    value,
+    filename: name,
+    contentType: "application/json",
+    fields: { projectId: PROJECT_ID },
+  });
   const res = await fetch(\`\${BASE_URL}/api/files\`, {
     method: "POST",
-    headers: { Authorization: \`Bearer \${API_KEY}\` },
-    body: form,
+    headers: { Authorization: \`Bearer \${API_KEY}\`, ...upload.headers },
+    body: upload.body,
   });
   const body = await res.json();
   if (!body.ok) throw new Error(body.error?.message ?? \`\${res.status}\`);
