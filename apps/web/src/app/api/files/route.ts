@@ -101,9 +101,10 @@ async function parseMultipartForm(req: Request, boundary: string): Promise<FormD
 
     const value = trimPartBody(part.subarray(separator + 4));
     if (disposition.filename !== undefined) {
+      const fileBody = value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer;
       form.append(
         disposition.name,
-        new File([value], disposition.filename, {
+        new File([fileBody], disposition.filename, {
           type: headers.get("content-type") || "application/octet-stream",
         }),
       );
