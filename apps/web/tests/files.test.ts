@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 import { POST as filesPOST, GET as filesGET } from "@/app/api/files/route";
 import { GET as fileGET, DELETE as fileDELETE } from "@/app/api/files/[id]/route";
 import { POST as projectsPOST } from "@/app/api/projects/route";
@@ -20,6 +21,36 @@ function buildFileForm(name = "hello.txt", contents = "hello world", contentType
   fd.append("file", blob, name);
   fd.append("meta", JSON.stringify({}));
   return fd;
+}
+
+function buildMultipartRequest(path: string, input: {
+  cookies: Record<string, string>;
+  headers: Record<string, string>;
+  filename: string;
+  contentType: string;
+  bytes: Uint8Array;
+}) {
+  const boundary = "------------------------storeai-test-boundary";
+  const chunks = [
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${input.filename}"\r\nContent-Type: ${input.contentType}\r\n\r\n`),
+    Buffer.from(input.bytes),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ];
+  const body = Buffer.concat(chunks);
+  const headers = new Headers(input.headers);
+  headers.set("content-type", `multipart/form-data; boundary=${boundary}`);
+  headers.set("content-length", String(body.byteLength));
+  headers.set(
+    "cookie",
+    Object.entries(input.cookies)
+      .map(([key, value]) => `${key}=${value}`)
+      .join("; "),
+  );
+  return new NextRequest(`http://localhost:3000${path}`, {
+    method: "POST",
+    headers,
+    body: new Uint8Array(body),
+  });
 }
 
 describe("file uploads", () => {
@@ -105,6 +136,26 @@ describe("file uploads", () => {
     expect(file.projectId).toBe(project.id);
     expect(file.downloadUrl).toBe(appHostedFileDownloadUrl(file.id));
     expect(file.objectKey).toContain(`/projects/${project.id}/`);
+  });
+
+  it("accepts Node-style multipart binary uploads", async () => {
+    const { session } = await createUserAndTenant({ tenantSlug: uniqueSlug("fbin") });
+
+    const upRes = await filesPOST(
+      buildMultipartRequest("/api/files", {
+        cookies: sessionCookies(session),
+        headers: csrfHeader(session),
+        filename: "screen.png",
+        contentType: "image/png",
+        bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]),
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    const file = await expectOk(upRes);
+    expect(file.originalName).toBe("screen.png");
+    expect(file.contentType).toBe("image/png");
+    expect(file.sizeBytes).toBe(8);
   });
 
   it("ignores non-UUID project ids on file uploads", async () => {

@@ -38,6 +38,19 @@ const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50MB for v1
 const ALLOWED_CT = /^[\w.\-+/]+$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+type UploadedFileLike = {
+  arrayBuffer: () => Promise<ArrayBuffer>;
+  size: number;
+  name?: string;
+  type?: string;
+};
+
+function isUploadedFileLike(value: unknown): value is UploadedFileLike {
+  if (!value || typeof value !== "object") return false;
+  const file = value as Partial<UploadedFileLike>;
+  return typeof file.arrayBuffer === "function" && typeof file.size === "number";
+}
+
 function multipartBoundary(contentType: string): string | null {
   const match = contentType.match(/(?:^|;)\s*boundary=(?:"([^"]+)"|([^;]+))/i);
   return match?.[1] ?? match?.[2]?.trim() ?? null;
@@ -154,7 +167,7 @@ export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, 
   const form = await readUploadForm(req);
   const file = form.get("file");
   const metaRaw = form.get("meta");
-  if (!(file instanceof File)) throw new ValidationError("Missing 'file' form field");
+  if (!isUploadedFileLike(file)) throw new ValidationError("Missing 'file' form field");
   if (file.size === 0) throw new ValidationError("Empty file");
   if (file.size > MAX_FILE_BYTES) throw new ValidationError("File too large");
   const contentType = file.type || "application/octet-stream";
@@ -167,7 +180,7 @@ export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, 
   const objectKey = buildObjectKey({
     tenantId: ctx.tenantId,
     projectId,
-    originalName: file.name,
+    originalName: file.name || "upload",
   });
   const buf = Buffer.from(await file.arrayBuffer());
   await putObject({ objectKey, body: buf, contentType });
@@ -179,7 +192,7 @@ export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, 
       tenantId: ctx.tenantId,
       projectId,
       objectKey,
-      originalName: file.name.slice(0, 255),
+      originalName: (file.name || "upload").slice(0, 255),
       sizeBytes: file.size,
       contentType,
       uploadedByUserId: ctx.user?.id ?? null,
