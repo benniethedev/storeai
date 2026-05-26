@@ -12,7 +12,7 @@ import { tenantRoute } from "@/lib/routeHelpers";
 import { writeAuditLogSafe } from "@/lib/context";
 import { redisSafe } from "@/lib/redisSafe";
 import { appHostedFileDownloadUrl } from "@/lib/fileUrls";
-import { ValidationError } from "@storeai/shared/errors";
+import { AppError, ValidationError } from "@storeai/shared/errors";
 import { writeEventSafe } from "@/lib/events";
 
 export const runtime = "nodejs";
@@ -38,6 +38,25 @@ const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50MB for v1
 const ALLOWED_CT = /^[\w.\-+/]+$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+async function readUploadForm(req: Request): Promise<FormData> {
+  const contentType = req.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("multipart/form-data")) {
+    throw new ValidationError("Expected multipart/form-data upload");
+  }
+
+  const contentLength = Number(req.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > MAX_FILE_BYTES + 1024 * 1024) {
+    throw new AppError(413, "payload_too_large", "Upload exceeds the allowed size");
+  }
+
+  try {
+    return await req.formData();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new ValidationError("Failed to parse multipart upload", { reason: message });
+  }
+}
+
 function metadataProjectId(metaRaw: FormDataEntryValue | null): string | null {
   if (!metaRaw) return null;
   const parsed = JSON.parse(String(metaRaw)) as { projectId?: unknown } | null;
@@ -50,7 +69,7 @@ function normalizeProjectId(value: unknown): string | null {
 }
 
 export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, ctx }) => {
-  const form = await req.formData();
+  const form = await readUploadForm(req);
   const file = form.get("file");
   const metaRaw = form.get("meta");
   if (!(file instanceof File)) throw new ValidationError("Missing 'file' form field");

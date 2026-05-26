@@ -132,6 +132,26 @@ describe("file uploads", () => {
     expect(file.objectKey).not.toContain("/projects/proj-4103a558/");
   });
 
+  it("returns a validation error for non-multipart uploads", async () => {
+    const { session } = await createUserAndTenant({ tenantSlug: uniqueSlug("fjson") });
+
+    const res = await filesPOST(
+      buildRequest("/api/files", {
+        method: "POST",
+        body: { file: "not multipart" },
+        cookies: sessionCookies(session),
+        headers: csrfHeader(session),
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe("validation_error");
+    expect(body.error.message).toBe("Expected multipart/form-data upload");
+  });
+
   it("other tenants cannot access the file", async () => {
     const a = await createUserAndTenant({ tenantSlug: uniqueSlug("a") });
     const b = await createUserAndTenant({ tenantSlug: uniqueSlug("b") });
