@@ -200,6 +200,7 @@ StoreAI is intentionally small enough for local agents to use directly. Give an 
 
 Recommended agent behavior:
 
+- Use `@storeai/sdk` for new integrations. See [`docs/SDK.md`](./docs/SDK.md).
 - Store small operational state in records.
 - Store large prompts, transcripts, attachments, reports, and logs in files.
 - Use stable record keys so retries and follow-up tasks can find the same data.
