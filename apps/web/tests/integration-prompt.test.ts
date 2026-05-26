@@ -21,6 +21,9 @@ describe("integration prompt helpers", () => {
     const js = buildIntegrationJsSnippet({ baseUrl, project });
     expect(js).toContain("INLINE_LIMIT_BYTES");
     expect(js).toContain("uploadJsonFile");
+    expect(js).toContain("multipartUploadBody");
+    expect(js).toContain("Content-Length");
+    expect(js).toContain('Connection: "close"');
     expect(js).toContain("createSmartRecord");
     expect(js).toContain('storage: "file"');
     expect(js).toContain("fileId");
