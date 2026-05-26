@@ -12,6 +12,7 @@ describe("integration prompt helpers", () => {
     const prompt = buildIntegrationPrompt({ baseUrl, project });
     expect(prompt).toContain("Large content strategy");
     expect(prompt).toContain("POST /api/files");
+    expect(prompt).toContain("@storeai/sdk");
     expect(prompt).toContain("fileId");
     expect(prompt).toContain(project.name);
     expect(prompt).toContain(baseUrl);
@@ -19,13 +20,11 @@ describe("integration prompt helpers", () => {
 
   it("includes a smart record helper that offloads large JSON to files", () => {
     const js = buildIntegrationJsSnippet({ baseUrl, project });
-    expect(js).toContain("INLINE_LIMIT_BYTES");
-    expect(js).toContain("uploadJsonFile");
-    expect(js).toContain("multipartUploadBody");
-    expect(js).toContain("Content-Length");
-    expect(js).toContain('Connection: "close"');
+    expect(js).toContain('import { StoreAI } from "@storeai/sdk"');
+    expect(js).toContain(project.id);
+    expect(js).toContain(baseUrl);
+    expect(js).toContain("uploadFile");
     expect(js).toContain("createSmartRecord");
-    expect(js).toContain('storage: "file"');
     expect(js).toContain("fileId");
   });
 });

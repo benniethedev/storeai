@@ -2,6 +2,8 @@
 
 All endpoints live under `/api`. Cookie-authenticated calls require the `x-sa-csrf` header on mutations. Bearer API keys (`Authorization: Bearer sk_<prefix>_<secret>`) bypass CSRF.
 
+For new projects, prefer `@storeai/sdk` instead of hand-written fetch calls, especially for file uploads. See [`SDK.md`](./SDK.md).
+
 Every response is JSON of the form `{ "ok": true, "data": ... }` or `{ "ok": false, "error": { "code", "message", "requestId", "details?" } }`. The `requestId` is also returned in the `x-request-id` response header — quote it when filing bugs.
 
 ## Limits
