@@ -115,7 +115,7 @@ export const uploadFile = store.files.upload;
 export const createSmartRecord = store.createSmartRecord;
 
 // Files are for images, screenshots, docs, Markdown, HTML exports, logs,
-// transcripts, and other large payloads. Store file.id inside a record.
+// transcripts, and other large payloads. Store file.id as fileId inside a record.
 // createSmartRecord keeps JSON <= ${INLINE_LIMIT_BYTES} bytes inline and offloads larger JSON to /api/files.
 `;
 }
