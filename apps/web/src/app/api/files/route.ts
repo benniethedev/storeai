@@ -110,7 +110,12 @@ async function parseMultipartForm(req: Request, boundary: string): Promise<Uploa
 
     const headers = headerMap(part.subarray(0, separator));
     const disposition = parseContentDisposition(headers.get("content-disposition"));
-    if (!disposition.name) {
+    // Some reverse proxies have been observed to preserve the filename while
+    // dropping the multipart field name on binary parts. The upload endpoint
+    // accepts a single file, so a filename-bearing unnamed part is safely the
+    // canonical `file` field.
+    const fieldName = disposition.name ?? (disposition.filename !== undefined ? "file" : undefined);
+    if (!fieldName) {
       offset = next;
       continue;
     }
@@ -118,7 +123,7 @@ async function parseMultipartForm(req: Request, boundary: string): Promise<Uploa
     const value = trimPartBody(part.subarray(separator + 4));
     if (disposition.filename !== undefined) {
       const fileBody = Buffer.from(value);
-      form.set(disposition.name, {
+      form.set(fieldName, {
         name: disposition.filename,
         type: headers.get("content-type") || "application/octet-stream",
         size: fileBody.byteLength,
@@ -126,7 +131,7 @@ async function parseMultipartForm(req: Request, boundary: string): Promise<Uploa
           fileBody.buffer.slice(fileBody.byteOffset, fileBody.byteOffset + fileBody.byteLength) as ArrayBuffer,
       });
     } else {
-      form.set(disposition.name, value.toString("utf8"));
+      form.set(fieldName, value.toString("utf8"));
     }
     offset = next;
   }
