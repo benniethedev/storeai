@@ -104,31 +104,14 @@ async function parseMultipartForm(req: Request, boundary: string): Promise<Uploa
     const part = body.subarray(offset, next);
     const separator = part.indexOf(Buffer.from("\r\n\r\n"));
     if (separator < 0) {
-      console.warn("[file-upload] skipped multipart part without header separator", {
-        partBytes: part.byteLength,
-        prefix: part.subarray(0, 160).toString("latin1"),
-      });
       offset = next;
       continue;
     }
 
     const headers = headerMap(part.subarray(0, separator));
     const disposition = parseContentDisposition(headers.get("content-disposition"));
-    // Some reverse proxies have been observed to preserve the filename while
-    // dropping the multipart field name on binary parts. The upload endpoint
-    // accepts a single file, so a filename-bearing unnamed part is safely the
-    // canonical `file` field.
-    const fieldName = disposition.name ?? (disposition.filename !== undefined ? "file" : undefined);
-    console.warn("[file-upload] parsed multipart part", {
-      fieldName,
-      filename: disposition.filename,
-      partBytes: part.byteLength,
-      contentDisposition: headers.get("content-disposition"),
-    });
+    const fieldName = disposition.name;
     if (!fieldName) {
-      console.warn("[file-upload] skipped unnamed multipart part", {
-        headers: Object.fromEntries(headers),
-      });
       offset = next;
       continue;
     }
