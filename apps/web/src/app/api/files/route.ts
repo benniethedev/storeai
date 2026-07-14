@@ -45,6 +45,9 @@ type UploadedFileLike = {
   type?: string;
 };
 
+type UploadFormValue = string | UploadedFileLike;
+type UploadForm = Map<string, UploadFormValue>;
+
 function isUploadedFileLike(value: unknown): value is UploadedFileLike {
   if (!value || typeof value !== "object") return false;
   const file = value as Partial<UploadedFileLike>;
@@ -84,10 +87,10 @@ function trimPartBody(body: Buffer): Buffer {
   return body.subarray(0, body.subarray(-2).equals(Buffer.from("\r\n")) ? body.length - 2 : body.length);
 }
 
-async function parseMultipartForm(req: Request, boundary: string): Promise<FormData> {
+async function parseMultipartForm(req: Request, boundary: string): Promise<UploadForm> {
   const body = Buffer.from(await req.arrayBuffer());
   const delimiter = Buffer.from(`--${boundary}`);
-  const form = new FormData();
+  const form: UploadForm = new Map();
   let offset = body.indexOf(delimiter);
   if (offset < 0) throw new ValidationError("Malformed multipart upload");
 
@@ -114,15 +117,16 @@ async function parseMultipartForm(req: Request, boundary: string): Promise<FormD
 
     const value = trimPartBody(part.subarray(separator + 4));
     if (disposition.filename !== undefined) {
-      const fileBody = value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer;
-      form.append(
-        disposition.name,
-        new File([fileBody], disposition.filename, {
-          type: headers.get("content-type") || "application/octet-stream",
-        }),
-      );
+      const fileBody = Buffer.from(value);
+      form.set(disposition.name, {
+        name: disposition.filename,
+        type: headers.get("content-type") || "application/octet-stream",
+        size: fileBody.byteLength,
+        arrayBuffer: async () =>
+          fileBody.buffer.slice(fileBody.byteOffset, fileBody.byteOffset + fileBody.byteLength) as ArrayBuffer,
+      });
     } else {
-      form.append(disposition.name, value.toString("utf8"));
+      form.set(disposition.name, value.toString("utf8"));
     }
     offset = next;
   }
@@ -130,7 +134,7 @@ async function parseMultipartForm(req: Request, boundary: string): Promise<FormD
   return form;
 }
 
-async function readUploadForm(req: Request): Promise<FormData> {
+async function readUploadForm(req: Request): Promise<UploadForm> {
   const contentType = req.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().includes("multipart/form-data")) {
     throw new ValidationError("Expected multipart/form-data upload");
@@ -152,7 +156,7 @@ async function readUploadForm(req: Request): Promise<FormData> {
   }
 }
 
-function metadataProjectId(metaRaw: FormDataEntryValue | null): string | null {
+function metadataProjectId(metaRaw: UploadFormValue | undefined): string | null {
   if (!metaRaw) return null;
   const parsed = JSON.parse(String(metaRaw)) as { projectId?: unknown } | null;
   return typeof parsed?.projectId === "string" ? parsed.projectId : null;
