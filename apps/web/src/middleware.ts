@@ -53,5 +53,8 @@ export function middleware(req: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: "/((?!_next/static|_next/image|favicon.ico).*)",
+  // Multipart uploads bypass middleware because proxy-to-middleware body
+  // forwarding can consume the first request chunk before the route handler.
+  // `/api/files` still performs normal API-key/session auth and tenant checks.
+  matcher: "/((?!api/files|_next/static|_next/image|favicon.ico).*)",
 };
