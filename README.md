@@ -101,7 +101,7 @@ pnpm worker          # in another
 | `pnpm realtime` | Realtime WebSocket server on 127.0.0.1:3010 |
 | `pnpm realtime:start` | Realtime WebSocket server in production mode |
 | `pnpm deploy:domain` | Attach a custom domain + Let's Encrypt HTTPS on Ubuntu/Debian (installs Caddy, writes systemd units, sets UFW default-deny) |
-| `pnpm test` | Run Vitest integration suite |
+| `pnpm test` | Run the API integration suite and SDK reliability tests |
 | `pnpm test:e2e` | Run Playwright end-to-end tests |
 | `pnpm reset` | Wipe volumes + re-migrate + re-seed (prints the seeded creds at the end) |
 | `pnpm clean` | Nuclear wipe: volumes, `.next`, build caches (keeps `.env`) |
@@ -188,7 +188,7 @@ StoreAI is designed around small operational records, plus separate files for la
 ## Tests
 
 ```bash
-pnpm test       # Vitest — 21 integration tests against real Postgres/Redis/MinIO
+pnpm test       # API integration tests plus SDK timeout/retry/response-contract tests
 pnpm test:e2e   # Playwright — full signup → API key → CRUD flow in the browser
 ```
 

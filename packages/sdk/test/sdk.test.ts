@@ -86,3 +86,48 @@ async function main() {
 }
 
 await main();
+
+async function reliability() {
+  let attempts = 0;
+  const retrying = new StoreAI({
+    baseUrl: "https://storeai.example",
+    apiKey: "sk_test",
+    projectId: "project-123",
+    retryBaseDelayMs: 0,
+    fetch: (async () => {
+      attempts += 1;
+      if (attempts < 3) return json({ ok: false, error: { code: "unavailable", message: "Try again" } }, 503);
+      return json({ ok: true, data: { items: [], page: 1, pageSize: 20, total: 0 } });
+    }) as typeof fetch,
+  });
+  const records = await retrying.records.list();
+  assert.equal(records.total, 0);
+  assert.equal(attempts, 3);
+
+  const malformed = new StoreAI({
+    baseUrl: "https://storeai.example",
+    apiKey: "sk_test",
+    maxRetries: 0,
+    fetch: (async () => new Response("gateway exploded", { status: 502 })) as typeof fetch,
+  });
+  await assert.rejects(
+    () => malformed.projects.list(),
+    (error) => error instanceof StoreAIError && error.code === "invalid_response" && error.retryable,
+  );
+
+  const hanging = new StoreAI({
+    baseUrl: "https://storeai.example",
+    apiKey: "sk_test",
+    timeoutMs: 10,
+    maxRetries: 0,
+    fetch: ((_, init) => new Promise((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    })) as typeof fetch,
+  });
+  await assert.rejects(
+    () => hanging.projects.list(),
+    (error) => error instanceof StoreAIError && error.code === "timeout" && error.retryable,
+  );
+}
+
+await reliability();

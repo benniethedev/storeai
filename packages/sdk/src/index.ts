@@ -81,20 +81,31 @@ export type StoreAIClientOptions = {
   apiKey: string;
   projectId?: string;
   fetch?: typeof fetch;
+  timeoutMs?: number;
+  maxRetries?: number;
+  retryBaseDelayMs?: number;
 };
 
 const DEFAULT_INLINE_LIMIT_BYTES = 900_000;
+const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_RETRY_BASE_DELAY_MS = 150;
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
 export class StoreAIError extends Error {
   readonly code: string;
   readonly status: number;
   readonly requestId?: string;
+  readonly retryable: boolean;
 
-  constructor(input: { code: string; message: string; status: number; requestId?: string }) {
+  constructor(input: { code: string; message: string; status: number; requestId?: string; retryable?: boolean; cause?: unknown }) {
     super(input.message);
     this.name = "StoreAIError";
     this.code = input.code;
     this.status = input.status;
     this.requestId = input.requestId;
+    this.retryable = input.retryable ?? RETRYABLE_STATUS_CODES.has(input.status);
+    if (input.cause !== undefined) this.cause = input.cause;
   }
 }
 
@@ -104,6 +115,28 @@ function cleanBaseUrl(value: string) {
 
 function byteLength(value: string) {
   return new TextEncoder().encode(value).byteLength;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryAfterMs(response: Response): number | null {
+  const value = response.headers.get("retry-after");
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
+}
+
+function isEnvelope<T>(value: unknown): value is StoreAIEnvelope<T> {
+  if (!value || typeof value !== "object" || !("ok" in value)) return false;
+  const envelope = value as { ok?: unknown; data?: unknown; error?: unknown };
+  if (envelope.ok === true) return "data" in envelope;
+  if (envelope.ok !== false || !envelope.error || typeof envelope.error !== "object") return false;
+  const error = envelope.error as { code?: unknown; message?: unknown };
+  return typeof error.code === "string" && typeof error.message === "string";
 }
 
 function inferContentType(input: UploadFileOptions) {
@@ -127,6 +160,9 @@ export class StoreAI {
   readonly apiKey: string;
   readonly projectId?: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
+  private readonly maxRetries: number;
+  private readonly retryBaseDelayMs: number;
 
   constructor(options: StoreAIClientOptions) {
     if (!options.baseUrl) throw new Error("StoreAI baseUrl is required");
@@ -135,27 +171,98 @@ export class StoreAI {
     this.apiKey = options.apiKey;
     this.projectId = options.projectId;
     this.fetchImpl = options.fetch ?? fetch;
+    this.timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    this.maxRetries = Math.max(0, Math.floor(options.maxRetries ?? DEFAULT_MAX_RETRIES));
+    this.retryBaseDelayMs = Math.max(0, options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS);
   }
 
   private async api<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        ...(init.headers ?? {}),
-      },
-    });
-    const text = await res.text();
-    const envelope = text ? (JSON.parse(text) as StoreAIEnvelope<T>) : ({ ok: true, data: undefined as T } as const);
-    if (!envelope.ok) {
-      throw new StoreAIError({
-        code: envelope.error.code,
-        message: envelope.error.message,
-        requestId: envelope.error.requestId,
-        status: res.status,
-      });
+    const method = (init.method ?? "GET").toUpperCase();
+    const attempts = method === "GET" || method === "HEAD" ? this.maxRetries + 1 : 1;
+    let lastError: StoreAIError | undefined;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+      const abortFromCaller = () => controller.abort();
+      init.signal?.addEventListener("abort", abortFromCaller, { once: true });
+
+      let response: Response | undefined;
+      try {
+        response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+          ...init,
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            Accept: "application/json",
+            ...(init.headers ?? {}),
+          },
+        });
+        const text = await response.text();
+        let parsed: unknown;
+        try {
+          parsed = text ? JSON.parse(text) : undefined;
+        } catch (cause) {
+          throw new StoreAIError({
+            code: "invalid_response",
+            message: `StoreAI returned invalid JSON (HTTP ${response.status})`,
+            status: response.status,
+            requestId: response.headers.get("x-request-id") ?? undefined,
+            retryable: response.status >= 500,
+            cause,
+          });
+        }
+        if (!isEnvelope<T>(parsed)) {
+          throw new StoreAIError({
+            code: "invalid_response",
+            message: `StoreAI returned an invalid response envelope (HTTP ${response.status})`,
+            status: response.status,
+            requestId: response.headers.get("x-request-id") ?? undefined,
+            retryable: response.status >= 500,
+          });
+        }
+        if (!parsed.ok) {
+          throw new StoreAIError({
+            code: parsed.error.code,
+            message: parsed.error.message,
+            requestId: parsed.error.requestId ?? response.headers.get("x-request-id") ?? undefined,
+            status: response.status,
+          });
+        }
+        if (!response.ok) {
+          throw new StoreAIError({
+            code: "http_error",
+            message: `StoreAI returned HTTP ${response.status}`,
+            status: response.status,
+            requestId: response.headers.get("x-request-id") ?? undefined,
+          });
+        }
+        return parsed.data;
+      } catch (cause) {
+        const callerAborted = init.signal?.aborted === true;
+        if (callerAborted) throw cause;
+        lastError = cause instanceof StoreAIError
+          ? cause
+          : new StoreAIError({
+              code: controller.signal.aborted ? "timeout" : "network_error",
+              message: controller.signal.aborted
+                ? `StoreAI request timed out after ${this.timeoutMs}ms`
+                : "StoreAI request failed before a response was received",
+              status: 0,
+              retryable: true,
+              cause,
+            });
+        if (!lastError.retryable || attempt === attempts - 1) throw lastError;
+        const serverDelay = response ? retryAfterMs(response) : null;
+        const backoff = this.retryBaseDelayMs * 2 ** attempt;
+        await sleep(Math.min(serverDelay ?? backoff, 5_000));
+      } finally {
+        clearTimeout(timeout);
+        init.signal?.removeEventListener("abort", abortFromCaller);
+      }
     }
-    return envelope.data;
+
+    throw lastError ?? new StoreAIError({ code: "network_error", message: "StoreAI request failed", status: 0, retryable: true });
   }
 
   projects = {

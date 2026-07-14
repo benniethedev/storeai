@@ -9,8 +9,18 @@ const store = new StoreAI({
   baseUrl: process.env.STOREAI_BASE_URL!,
   apiKey: process.env.STOREAI_API_KEY!,
   projectId: process.env.STOREAI_PROJECT_ID!,
+  timeoutMs: 10_000,
+  maxRetries: 2,
 });
 ```
+
+The SDK applies a bounded timeout to every request and automatically retries
+transient read failures (`408`, `425`, `429`, and selected `5xx` responses).
+It honors `Retry-After` up to five seconds. Mutations are never retried
+automatically; use an `Idempotency-Key` with the HTTP API when your application
+needs safe mutation retries. Invalid JSON, proxy error pages, timeouts, and
+network failures are normalized into `StoreAIError` with a stable `code`,
+`status`, `requestId`, and `retryable` flag.
 
 ## Files
 
