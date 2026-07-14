@@ -1,5 +1,6 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { handleError } from "./http.js";
 import {
   getUserSessionFromRequest,
@@ -11,7 +12,7 @@ import {
 } from "./context.js";
 import { and, eq } from "drizzle-orm";
 import { getDb, idempotencyKeys } from "@storeai/db";
-import { ForbiddenError } from "@storeai/shared/errors";
+import { AppError, ForbiddenError } from "@storeai/shared/errors";
 import { Permissions, type ApiKeyScope, type TenantRole } from "@storeai/shared";
 import { env } from "@/env.server";
 import { incrHashField, statusClass } from "./metrics.js";
@@ -32,12 +33,14 @@ export interface TenantRouteOptions {
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const IDEMPOTENCY_KEY_MAX = 120;
+const IDEMPOTENCY_LEASE_MS = 5 * 60 * 1000;
 
 export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Handler<T>) {
   return async (req: NextRequest, routeCtx: { params: Promise<T> }): Promise<NextResponse> => {
     const started = Date.now();
     let status = 500;
     let ctx: TenantCtx | null = null;
+    let ownsIdempotencyReservation = false;
     try {
       if (opts.eagerRequestBody && MUTATING.has(req.method.toUpperCase())) {
         const body = await req.arrayBuffer();
@@ -77,14 +80,7 @@ export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Hand
       }
 
       const params = (await routeCtx.params) as T;
-      const idempotency = await findIdempotentReplay(req, ctx).catch((error) => {
-        console.error("[idempotency] replay lookup failed", {
-          route: new URL(req.url).pathname,
-          method: req.method,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      });
+      const idempotency = await reserveIdempotency(req, ctx);
       if (idempotency) {
         status = idempotency.status;
         return NextResponse.json(idempotency.body, {
@@ -92,12 +88,20 @@ export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Hand
           headers: { "x-storeai-idempotent-replay": "true" },
         });
       }
+      ownsIdempotencyReservation = normalizedIdempotencyKey(req) !== null;
 
       const res = await handler({ req, ctx, params });
       status = res.status;
-      await storeIdempotentResponse(req, ctx, res).catch(() => {});
+      if (res.status >= 200 && res.status < 300) {
+        await completeIdempotency(req, ctx, res);
+      } else {
+        if (ownsIdempotencyReservation) await releasePendingIdempotency(req, ctx);
+      }
       return res;
     } catch (err) {
+      if (ctx && ownsIdempotencyReservation) {
+        await releasePendingIdempotency(req, ctx).catch(() => {});
+      }
       const res = handleError(err);
       status = res.status;
       if (ctx) {
@@ -151,17 +155,39 @@ async function writeErrorLogFromResponse(
   });
 }
 
-async function findIdempotentReplay(
+async function reserveIdempotency(
   req: NextRequest,
   ctx: TenantCtx,
 ): Promise<{ status: number; body: unknown } | null> {
   const key = normalizedIdempotencyKey(req);
   if (!key) return null;
   const route = new URL(req.url).pathname;
+  const requestHash = await idempotencyRequestHash(req);
+  const leaseExpiresAt = new Date(Date.now() + IDEMPOTENCY_LEASE_MS);
+  const inserted = await getDb()
+    .insert(idempotencyKeys)
+    .values({
+      tenantId: ctx.tenantId,
+      actorUserId: ctx.user?.id ?? null,
+      actorApiKeyId: ctx.apiKeyId,
+      key,
+      method: req.method.toUpperCase(),
+      route,
+      requestHash,
+      state: "pending",
+      leaseExpiresAt,
+    })
+    .onConflictDoNothing()
+    .returning({ id: idempotencyKeys.id });
+  if (inserted[0]) return null;
+
   const rows = await getDb()
     .select({
+      state: idempotencyKeys.state,
+      requestHash: idempotencyKeys.requestHash,
       statusCode: idempotencyKeys.statusCode,
       responseBody: idempotencyKeys.responseBody,
+      leaseExpiresAt: idempotencyKeys.leaseExpiresAt,
     })
     .from(idempotencyKeys)
     .where(
@@ -174,10 +200,28 @@ async function findIdempotentReplay(
     )
     .limit(1);
   const row = rows[0];
-  return row ? { status: row.statusCode, body: row.responseBody } : null;
+  if (!row) throw new AppError(409, "idempotency_conflict", "Idempotency reservation changed; retry");
+  if (row.requestHash && row.requestHash !== requestHash) {
+    throw new AppError(
+      409,
+      "idempotency_conflict",
+      "Idempotency key was already used with a different request",
+    );
+  }
+  if (row.state === "completed" && row.statusCode !== null && row.responseBody !== null) {
+    return { status: row.statusCode, body: row.responseBody };
+  }
+  const stale = row.leaseExpiresAt !== null && row.leaseExpiresAt.getTime() <= Date.now();
+  throw new AppError(
+    409,
+    stale ? "idempotency_recovery_required" : "idempotency_in_progress",
+    stale
+      ? "The original request may have completed; inspect state before retrying with a new key"
+      : "A request with this idempotency key is already in progress",
+  );
 }
 
-async function storeIdempotentResponse(
+async function completeIdempotency(
   req: NextRequest,
   ctx: TenantCtx,
   res: NextResponse,
@@ -190,25 +234,60 @@ async function storeIdempotentResponse(
   const body = await res.clone().json().catch(() => null);
   if (!body) return;
   await getDb()
-    .insert(idempotencyKeys)
-    .values({
-      tenantId: ctx.tenantId,
-      actorUserId: ctx.user?.id ?? null,
-      actorApiKeyId: ctx.apiKeyId,
-      key,
-      method: req.method.toUpperCase(),
-      route: new URL(req.url).pathname,
+    .update(idempotencyKeys)
+    .set({
+      state: "completed",
       statusCode: res.status,
       responseBody: body,
+      completedAt: new Date(),
+      leaseExpiresAt: null,
     })
-    .onConflictDoNothing();
+    .where(idempotencyIdentity(req, ctx, key));
+}
+
+async function releasePendingIdempotency(req: NextRequest, ctx: TenantCtx): Promise<void> {
+  const key = normalizedIdempotencyKey(req);
+  if (!key) return;
+  await getDb()
+    .delete(idempotencyKeys)
+    .where(and(idempotencyIdentity(req, ctx, key), eq(idempotencyKeys.state, "pending")));
+}
+
+function idempotencyIdentity(req: NextRequest, ctx: TenantCtx, key: string) {
+  return and(
+    eq(idempotencyKeys.tenantId, ctx.tenantId),
+    eq(idempotencyKeys.key, key),
+    eq(idempotencyKeys.method, req.method.toUpperCase()),
+    eq(idempotencyKeys.route, new URL(req.url).pathname),
+  );
+}
+
+async function idempotencyRequestHash(req: NextRequest): Promise<string> {
+  const url = new URL(req.url);
+  const bytes = Buffer.from(await req.clone().arrayBuffer());
+  return createHash("sha256")
+    .update(req.method.toUpperCase())
+    .update("\n")
+    .update(url.pathname)
+    .update("\n")
+    .update(url.search)
+    .update("\n")
+    .update(bytes)
+    .digest("hex");
 }
 
 function normalizedIdempotencyKey(req: NextRequest): string | null {
   if (!MUTATING.has(req.method.toUpperCase())) return null;
   const key = req.headers.get("idempotency-key")?.trim();
   if (!key) return null;
-  return key.slice(0, IDEMPOTENCY_KEY_MAX);
+  if (key.length > IDEMPOTENCY_KEY_MAX) {
+    throw new AppError(
+      400,
+      "invalid_idempotency_key",
+      `Idempotency key cannot exceed ${IDEMPOTENCY_KEY_MAX} characters`,
+    );
+  }
+  return key;
 }
 
 export function userRoute<T = unknown>(

@@ -122,7 +122,13 @@ pnpm worker          # in another
 
 All endpoints live under `/api`. Cookie-authenticated calls require the `x-sa-csrf` header on mutations. Bearer API keys bypass CSRF.
 
-Mutating API calls may include `Idempotency-Key: <stable-key>`. StoreAI will replay the first successful JSON response for the same tenant, route, method, and key, which makes agent/client retries safe.
+Mutating API calls may include `Idempotency-Key: <stable-key>`. StoreAI reserves the key before execution, fingerprints the request, rejects concurrent execution, and replays the first successful JSON response. Reusing a key with different request content returns `409 idempotency_conflict`.
+
+Projects have an integrity mode. Projects that predate the integrity rollout remain `legacy` and preserve duplicate-key and old by-key behavior. New projects default to `strict`: keys are unique within the project, key-based SDK calls include `projectId`, and atomic operations are enabled.
+
+Legacy projects can be checked with `GET /api/projects/:id/integrity` and upgraded one-way with `POST /api/projects/:id/integrity`. Upgrades are blocked until duplicate keys are resolved; StoreAI never deletes or silently chooses legacy records.
+
+Strict projects can use `POST /api/atomic/records` to create, update, or delete up to 100 records in one PostgreSQL transaction. The endpoint requires an idempotency key and commits its audit rows and durable events atomically with the records. Records created with `immutable: true` cannot be updated or deleted through the API.
 
 Records include a monotonically increasing `version`. Updates may include `If-Match: <version>` or `x-storeai-record-version: <version>` to reject stale writes with `409 version_conflict`.
 
@@ -147,6 +153,7 @@ Realtime runs as a separate WebSocket process. In production Caddy exposes it at
 | `/api/projects/:id` | GET, PATCH, DELETE | session OR api-key |
 | `/api/records` | GET, POST | session OR api-key |
 | `/api/records/:id` | GET, PATCH, DELETE | session OR api-key |
+| `/api/atomic/records` | POST | session OR api-key |
 | `/api/files` | GET, POST (multipart) | session OR api-key |
 | `/api/files/:id` | GET, DELETE | session OR api-key |
 | `/api/export` | GET | session (admin) |

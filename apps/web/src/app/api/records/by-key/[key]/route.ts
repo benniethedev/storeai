@@ -9,6 +9,7 @@ import { enqueueAuditFanout } from "@storeai/queue";
 import { redisSafe } from "@/lib/redisSafe";
 import { expectedRecordVersion, VersionConflictError } from "@/lib/recordVersion";
 import { writeEventSafe } from "@/lib/events";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 
@@ -67,20 +68,31 @@ function auditRecordUpdate(input: { key?: string; data?: unknown }) {
 async function assertProjectInTenant(tenantId: string, projectId: string) {
   const db = getDb();
   const rows = await db
-    .select({ id: projects.id })
+    .select({ id: projects.id, integrityMode: projects.integrityMode })
     .from(projects)
     .where(and(eq(projects.id, projectId), eq(projects.tenantId, tenantId)))
     .limit(1);
   if (!rows[0]) throw new NotFoundError("Project not found");
+  return rows[0];
+}
+
+function optionalProjectId(req: Request): string | undefined {
+  const value = new URL(req.url).searchParams.get("projectId");
+  return z.string().uuid().optional().parse(value ?? undefined);
 }
 
 // GET /api/records/by-key/[key] - Retrieve a single record by its exact key
-export const GET = tenantRoute<{ key: string }>({ requiredScope: "records:read" }, async ({ ctx, params }) => {
+export const GET = tenantRoute<{ key: string }>({ requiredScope: "records:read" }, async ({ req, ctx, params }) => {
+  const projectId = optionalProjectId(req);
+  if (projectId) await assertProjectInTenant(ctx.tenantId, projectId);
   const db = getDb();
+  const conditions = [eq(records.tenantId, ctx.tenantId), eq(records.key, params.key)];
+  if (projectId) conditions.push(eq(records.projectId, projectId));
+  else conditions.push(eq(records.strictIdentity, false));
   const rows = await db
     .select()
     .from(records)
-    .where(and(eq(records.tenantId, ctx.tenantId), eq(records.key, params.key)))
+    .where(and(...conditions))
     .limit(1);
   if (!rows[0]) throw new NotFoundError();
   return ok(rows[0]);
@@ -89,16 +101,24 @@ export const GET = tenantRoute<{ key: string }>({ requiredScope: "records:read" 
 // PUT /api/records/by-key/[key] - Upsert: update if record exists, create if not
 export const PUT = tenantRoute<{ key: string }>({ requiredScope: "records:write" }, async ({ req, ctx, params }) => {
   const body = await parseJsonBody(req);
+  const projectId = optionalProjectId(req);
+  if (projectId) await assertProjectInTenant(ctx.tenantId, projectId);
   const db = getDb();
 
   // Check for existing record with this key in the tenant
+  const lookupConditions = [eq(records.tenantId, ctx.tenantId), eq(records.key, params.key)];
+  if (projectId) lookupConditions.push(eq(records.projectId, projectId));
+  else lookupConditions.push(eq(records.strictIdentity, false));
   const existing = await db
     .select()
     .from(records)
-    .where(and(eq(records.tenantId, ctx.tenantId), eq(records.key, params.key)))
+    .where(and(...lookupConditions))
     .limit(1);
 
   if (existing[0]) {
+    if (existing[0].immutable) {
+      throw new AppError(409, "immutable_record", "Immutable records cannot be updated");
+    }
     // Update existing record
     const input = updateRecordSchema.parse(body);
     assertRecordDataSize(input.data);
@@ -141,26 +161,44 @@ export const PUT = tenantRoute<{ key: string }>({ requiredScope: "records:write"
     // Create new record
     const input = createRecordSchema.parse(body);
     assertRecordDataSize(input.data);
-    await assertProjectInTenant(ctx.tenantId, input.projectId);
+    if (projectId && input.projectId !== projectId) {
+      throw new AppError(400, "project_mismatch", "Project in query does not match request body");
+    }
+    const targetProject = await assertProjectInTenant(ctx.tenantId, input.projectId);
 
     // Validate key consistency if provided in body
     if (input.key !== undefined && input.key !== params.key) {
       throw new AppError(400, "key_mismatch", "Key in path does not match key in request body");
     }
 
-    const [row] = await db
+    const insert = db
       .insert(records)
       .values({
         tenantId: ctx.tenantId,
         projectId: input.projectId,
         key: params.key, // Use path key for consistency
         data: input.data,
+        immutable: input.immutable,
         createdByUserId: ctx.user?.id ?? null,
         createdByApiKeyId: ctx.apiKeyId,
-      })
-      .returning();
+      });
+    const inserted = targetProject.integrityMode === "strict"
+      ? await insert
+          .onConflictDoNothing({
+            target: [records.tenantId, records.projectId, records.key],
+            where: eq(records.strictIdentity, true),
+          })
+          .returning()
+      : await insert.returning();
+    const row = inserted[0];
 
-    if (!row) throw new Error("Failed to create record");
+    if (!row) {
+      throw new AppError(
+        409,
+        "concurrent_record_change",
+        "Record was created concurrently; retry with its current version",
+      );
+    }
 
     const auditId = await writeAuditLogSafe({
       ctx,

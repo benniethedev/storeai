@@ -8,6 +8,7 @@ export type StoreAIRecord<T = unknown> = {
   projectId: string;
   key: string;
   data: T;
+  immutable?: boolean;
   version?: number;
   createdAt: string;
   updatedAt: string;
@@ -36,8 +37,16 @@ export type StoreAIProject = {
   name: string;
   slug: string;
   description?: string | null;
+  integrityMode?: "legacy" | "strict";
   createdAt: string;
   updatedAt: string;
+};
+
+export type ProjectIntegrityReadiness = {
+  integrityMode: "legacy" | "strict";
+  recordCount: number;
+  duplicateKeyGroups: number;
+  canUpgrade: boolean;
 };
 
 export type ListRecordsOptions = {
@@ -55,6 +64,15 @@ export type ListRecordsResult<T = unknown> = {
   pageSize: number;
   total: number;
 };
+
+export type AtomicRecordOperation<T = unknown> =
+  | { op: "create"; key: string; data: T; ifAbsent?: true; immutable?: boolean }
+  | { op: "update"; key: string; data: T; expectedVersion?: number }
+  | { op: "delete"; key: string; expectedVersion?: number };
+
+export type AtomicRecordResult<T = unknown> =
+  | { op: "create" | "update"; record: StoreAIRecord<T> }
+  | { op: "delete"; key: string; deleted: true };
 
 export type StoreAIUploadBody =
   | Blob
@@ -273,6 +291,14 @@ export class StoreAI {
       this.json<StoreAIProject>(`/api/projects/${encodeURIComponent(id)}`, "PATCH", patch),
     delete: (id: string) =>
       this.api<{ deleted: true }>(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    integrityReadiness: (id: string) =>
+      this.api<ProjectIntegrityReadiness>(`/api/projects/${encodeURIComponent(id)}/integrity`),
+    upgradeIntegrity: (id: string) =>
+      this.json<{ integrityMode: "strict"; upgraded: boolean }>(
+        `/api/projects/${encodeURIComponent(id)}/integrity`,
+        "POST",
+        { integrityMode: "strict" },
+      ),
   };
 
   records = {
@@ -291,8 +317,10 @@ export class StoreAI {
     },
     get: <T = unknown>(id: string) =>
       this.api<StoreAIRecord<T>>(`/api/records/${encodeURIComponent(id)}`),
-    getByKey: <T = unknown>(key: string) =>
-      this.api<StoreAIRecord<T>>(`/api/records/by-key/${encodeURIComponent(key)}`),
+    getByKey: <T = unknown>(key: string, projectId = this.requiredProjectId()) =>
+      this.api<StoreAIRecord<T>>(
+        `/api/records/by-key/${encodeURIComponent(key)}?projectId=${encodeURIComponent(projectId)}`,
+      ),
     update: <T = unknown>(id: string, patch: { key?: string; data?: T; expectedVersion?: number }) => {
       const headers = patch.expectedVersion ? { "x-storeai-record-version": String(patch.expectedVersion) } : undefined;
       return this.json<StoreAIRecord<T>>(
@@ -303,9 +331,23 @@ export class StoreAI {
       );
     },
     upsertByKey: <T = unknown>(key: string, data: T, projectId = this.requiredProjectId()) =>
-      this.json<StoreAIRecord<T>>(`/api/records/by-key/${encodeURIComponent(key)}`, "PUT", { projectId, key, data }),
+      this.json<StoreAIRecord<T>>(
+        `/api/records/by-key/${encodeURIComponent(key)}?projectId=${encodeURIComponent(projectId)}`,
+        "PUT",
+        { projectId, key, data },
+      ),
     delete: (id: string) =>
       this.api<{ deleted: true }>(`/api/records/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    atomic: <T = unknown>(
+      operations: AtomicRecordOperation<T>[],
+      options: { idempotencyKey: string; projectId?: string },
+    ) =>
+      this.json<{ results: AtomicRecordResult<T>[] }>(
+        "/api/atomic/records",
+        "POST",
+        { projectId: options.projectId ?? this.requiredProjectId(), operations },
+        { "Idempotency-Key": options.idempotencyKey },
+      ),
   };
 
   files = {

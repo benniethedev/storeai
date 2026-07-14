@@ -32,6 +32,7 @@ export function storeAiOpenApiSpec(baseUrl = process.env.APP_URL || "http://loca
             name: { type: "string" },
             slug: { type: "string" },
             description: { type: ["string", "null"] },
+            integrityMode: { type: "string", enum: ["legacy", "strict"] },
             createdAt: { type: "string", format: "date-time" },
             updatedAt: { type: "string", format: "date-time" },
           },
@@ -44,6 +45,8 @@ export function storeAiOpenApiSpec(baseUrl = process.env.APP_URL || "http://loca
             projectId: { type: "string", format: "uuid" },
             key: { type: "string" },
             data: { type: "object", additionalProperties: true },
+            immutable: { type: "boolean" },
+            version: { type: "integer", minimum: 1 },
             createdAt: { type: "string", format: "date-time" },
             updatedAt: { type: "string", format: "date-time" },
           },
@@ -93,6 +96,21 @@ export function storeAiOpenApiSpec(baseUrl = process.env.APP_URL || "http://loca
           responses: { "200": { description: "Delete confirmation" } },
         },
       },
+      "/api/projects/{id}/integrity": {
+        get: {
+          summary: "Check whether a legacy project can upgrade to strict integrity",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Integrity mode and duplicate-key readiness" } },
+        },
+        post: {
+          summary: "Upgrade a legacy project to strict integrity (one-way)",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": { description: "Project is strict" },
+            "409": { description: "Upgrade blocked by duplicate keys" },
+          },
+        },
+      },
       "/api/records": {
         get: {
           summary: "List records",
@@ -128,13 +146,33 @@ export function storeAiOpenApiSpec(baseUrl = process.env.APP_URL || "http://loca
       "/api/records/by-key/{key}": {
         get: {
           summary: "Get a record by key",
-          parameters: [{ name: "key", in: "path", required: true, schema: { type: "string" } }],
+          parameters: [
+            { name: "key", in: "path", required: true, schema: { type: "string" } },
+            { name: "projectId", in: "query", required: true, schema: { type: "string", format: "uuid" } },
+          ],
           responses: { "200": { description: "Record" } },
         },
         put: {
           summary: "Upsert a record by key",
-          parameters: [{ name: "key", in: "path", required: true, schema: { type: "string" } }],
+          parameters: [
+            { name: "key", in: "path", required: true, schema: { type: "string" } },
+            { name: "projectId", in: "query", required: true, schema: { type: "string", format: "uuid" } },
+          ],
           responses: { "200": { description: "Record" } },
+        },
+      },
+      "/api/atomic/records": {
+        post: {
+          summary: "Atomically create, update, or delete up to 100 project records",
+          description:
+            "Requires Idempotency-Key. All record changes, audit rows, and durable events commit in one PostgreSQL transaction.",
+          parameters: [
+            { name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", maxLength: 120 } },
+          ],
+          responses: {
+            "200": { description: "Committed operation results" },
+            "409": { description: "Condition, version, immutability, or idempotency conflict" },
+          },
         },
       },
       "/api/files": {

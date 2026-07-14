@@ -43,6 +43,9 @@ async function main() {
           },
         });
       }
+      if (String(url).endsWith("/api/atomic/records")) {
+        return json({ ok: true, data: { results: [] } });
+      }
       return json({ ok: false, error: { code: "not_found", message: "Nope", requestId: "req-1" } }, 404);
     }) as typeof fetch,
   });
@@ -72,6 +75,20 @@ async function main() {
 
   const record = await store.records.create("asset:1", { fileId: file.id });
   assert.equal(record.id, "rec-1");
+
+  await store.records.atomic(
+    [{ op: "create", key: "journal:1", data: { amount: "100" }, immutable: true }],
+    { idempotencyKey: "txn-1" },
+  );
+  const atomicCall = calls.find((call) => call.url.endsWith("/api/atomic/records"));
+  assert.ok(atomicCall);
+  assert.equal(atomicCall.init.headers["Idempotency-Key"], "txn-1");
+  assert.deepEqual(JSON.parse(String(atomicCall.init.body)), {
+    projectId: "project-123",
+    operations: [
+      { op: "create", key: "journal:1", data: { amount: "100" }, immutable: true },
+    ],
+  });
 
   await assert.rejects(
     () => store.records.get("missing"),

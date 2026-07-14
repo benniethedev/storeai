@@ -5,7 +5,7 @@ import { buildIntegrationJsSnippet, buildIntegrationPrompt } from "@/lib/integra
 interface Props {
   open: boolean;
   onClose: () => void;
-  project: { id: string; name: string; slug: string };
+  project: { id: string; name: string; slug: string; integrityMode: "legacy" | "strict" };
 }
 
 type Tab = "overview" | "curl" | "js" | "prompt";

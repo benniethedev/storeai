@@ -6,6 +6,38 @@ For new projects, prefer `@storeai/sdk` instead of hand-written fetch calls, esp
 
 Every response is JSON of the form `{ "ok": true, "data": ... }` or `{ "ok": false, "error": { "code", "message", "requestId", "details?" } }`. The `requestId` is also returned in the `x-request-id` response header — quote it when filing bugs.
 
+## Integrity guarantees
+
+- Existing projects retain `legacy` integrity mode and their historical duplicate-key behavior.
+- New projects default to `strict` mode, where a record key is unique within its tenant and project.
+- `GET` and `PUT /api/records/by-key/:key` should include `projectId`. Calls without it remain available only as a legacy compatibility path and never return strict-project records.
+- `If-Match` or `x-storeai-record-version` prevents stale record updates.
+- `immutable: true` records cannot be updated or deleted through the API.
+- Idempotency keys are reserved before mutation execution and bound to a SHA-256 request fingerprint.
+- A concurrent request using the same key returns `409 idempotency_in_progress`; different content returns `409 idempotency_conflict`.
+- A stale reservation returns `409 idempotency_recovery_required`. This fails closed because the original mutation may have committed before its response was recorded.
+
+### Project integrity upgrades
+
+`GET /api/projects/:id/integrity` reports the project mode, record count, duplicate-key groups, and whether it can upgrade. `POST` the body `{ "integrityMode": "strict" }` to perform a one-way upgrade. The upgrade locks the project, rechecks duplicates, and changes the project and its records in one transaction. Projects with duplicate keys receive `409 integrity_upgrade_blocked` and remain unchanged.
+
+## Atomic records — `POST /api/atomic/records`
+
+This endpoint applies 1–100 record operations in one PostgreSQL transaction for strict-integrity projects. An `Idempotency-Key` header is required. Record changes, audit rows, and durable events either all commit or all roll back. Legacy projects receive `409 strict_integrity_required`.
+
+```json
+{
+  "projectId": "<uuid>",
+  "operations": [
+    { "op": "create", "key": "journal:debit", "data": { "amount": "100" }, "immutable": true },
+    { "op": "create", "key": "journal:credit", "data": { "amount": "100" }, "immutable": true },
+    { "op": "update", "key": "workflow:1", "data": { "state": "complete" }, "expectedVersion": 3 }
+  ]
+}
+```
+
+Each key may appear only once in a request. Updates and deletes support `expectedVersion`. Any conflict rolls back the entire request.
+
 ## Limits
 
 | Limit | Value | Error code | HTTP |

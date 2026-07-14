@@ -56,11 +56,12 @@ function assertRecordDataSize(data: unknown): void {
 async function assertProjectInTenant(tenantId: string, projectId: string) {
   const db = getDb();
   const rows = await db
-    .select({ id: projects.id })
+    .select({ id: projects.id, integrityMode: projects.integrityMode })
     .from(projects)
     .where(and(eq(projects.id, projectId), eq(projects.tenantId, tenantId)))
     .limit(1);
   if (!rows[0]) throw new NotFoundError("Project not found");
+  return rows[0];
 }
 
 const projectIdQuerySchema = z.string().uuid().optional();
@@ -120,20 +121,29 @@ export const POST = tenantRoute({ requiredScope: "records:write" }, async ({ req
   const body = await parseJsonBody(req);
   const input = createRecordSchema.parse(body);
   assertRecordDataSize(input.data);
-  await assertProjectInTenant(ctx.tenantId, input.projectId);
+  const project = await assertProjectInTenant(ctx.tenantId, input.projectId);
   const db = getDb();
-  const [row] = await db
+  const insert = db
     .insert(records)
     .values({
       tenantId: ctx.tenantId,
       projectId: input.projectId,
       key: input.key,
       data: input.data,
+      immutable: input.immutable,
       createdByUserId: ctx.user?.id ?? null,
       createdByApiKeyId: ctx.apiKeyId,
-    })
-    .returning();
-  if (!row) throw new Error("create record failed");
+    });
+  const inserted = project.integrityMode === "strict"
+    ? await insert
+        .onConflictDoNothing({
+          target: [records.tenantId, records.projectId, records.key],
+          where: eq(records.strictIdentity, true),
+        })
+        .returning()
+    : await insert.returning();
+  const row = inserted[0];
+  if (!row) throw new AppError(409, "record_exists", "A record with this key already exists");
   const auditId = await writeAuditLogSafe({
     ctx,
     action: "record.create",

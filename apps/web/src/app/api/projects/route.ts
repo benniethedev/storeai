@@ -58,6 +58,7 @@ export const POST = tenantRoute({ requiredScope: "projects:write" }, async ({ re
       name: input.name,
       slug: input.slug,
       description: input.description ?? null,
+      integrityMode: input.integrityMode,
       createdByUserId: ctx.user?.id ?? null,
     })
     .returning();
@@ -67,14 +68,14 @@ export const POST = tenantRoute({ requiredScope: "projects:write" }, async ({ re
     action: "project.create",
     resourceType: "project",
     resourceId: p.id,
-    metadata: { slug: p.slug },
+    metadata: { slug: p.slug, integrityMode: p.integrityMode },
   });
   await writeEventSafe({
     ctx,
     type: "project.created",
     resourceType: "project",
     resourceId: p.id,
-    payload: { name: p.name, slug: p.slug },
+    payload: { name: p.name, slug: p.slug, integrityMode: p.integrityMode },
   });
   return ok(p);
 });

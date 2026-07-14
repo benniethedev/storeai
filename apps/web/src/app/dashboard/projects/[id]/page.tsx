@@ -13,6 +13,7 @@ interface Project {
   id: string;
   name: string;
   slug: string;
+  integrityMode: "legacy" | "strict";
 }
 
 export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -66,7 +67,12 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   return (
     <div>
       <div className="topbar">
-        <h1>{project.name}</h1>
+        <h1>
+          {project.name}{" "}
+          <span className="muted" style={{ fontSize: 14 }}>
+            {project.integrityMode} integrity
+          </span>
+        </h1>
         <div className="row" style={{ gap: 12 }}>
           <button onClick={() => setIntegrateOpen(true)}>Integrate</button>
           <a href="/dashboard/projects">← All projects</a>

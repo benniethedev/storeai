@@ -76,6 +76,15 @@ export const PATCH = tenantRoute<{ id: string }>({ requiredScope: "records:write
   assertRecordDataSize(input.data);
   const expectedVersion = expectedRecordVersion(req);
   const db = getDb();
+  const existing = await db
+    .select({ immutable: records.immutable })
+    .from(records)
+    .where(and(eq(records.tenantId, ctx.tenantId), eq(records.id, params.id)))
+    .limit(1);
+  if (!existing[0]) throw new NotFoundError();
+  if (existing[0].immutable) {
+    throw new AppError(409, "immutable_record", "Immutable records cannot be updated");
+  }
   const patch: Record<string, unknown> = {
     updatedAt: new Date(),
     version: sql`${records.version} + 1`,
@@ -113,6 +122,15 @@ export const PATCH = tenantRoute<{ id: string }>({ requiredScope: "records:write
 
 export const DELETE = tenantRoute<{ id: string }>({ requiredScope: "records:write" }, async ({ ctx, params }) => {
   const db = getDb();
+  const existing = await db
+    .select({ immutable: records.immutable })
+    .from(records)
+    .where(and(eq(records.tenantId, ctx.tenantId), eq(records.id, params.id)))
+    .limit(1);
+  if (!existing[0]) throw new NotFoundError();
+  if (existing[0].immutable) {
+    throw new AppError(409, "immutable_record", "Immutable records cannot be deleted");
+  }
   const rows = await db
     .delete(records)
     .where(and(eq(records.tenantId, ctx.tenantId), eq(records.id, params.id)))

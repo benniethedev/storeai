@@ -62,6 +62,22 @@ await store.records.update(doc.id, {
 });
 ```
 
+The SDK automatically includes its configured `projectId` in key-based lookups. Keys are unique in new strict-integrity projects. Historical legacy projects may contain duplicate keys and should prefer ID-based access until explicitly upgraded.
+
+For workflows that must commit several records together, use the atomic API:
+
+```ts
+await store.records.atomic(
+  [
+    { op: "create", key: "journal:debit", data: { amount: "100" }, immutable: true },
+    { op: "create", key: "journal:credit", data: { amount: "100" }, immutable: true },
+  ],
+  { idempotencyKey: "transfer:txn_123" },
+);
+```
+
+Atomic operations commit their records, audit entries, and durable events in one PostgreSQL transaction. Store monetary values as integer strings or integer JSON values; do not use floating point values for financial calculations.
+
 ## Smart Records
 
 `createSmartRecord()` stores small JSON inline. If the serialized JSON is large, it uploads the JSON to `/api/files` and creates a small pointer record.

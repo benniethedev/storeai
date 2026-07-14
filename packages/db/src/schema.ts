@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const tenantRoleEnum = pgEnum("tenant_role", ["owner", "admin", "member"]);
+export const projectIntegrityModeEnum = pgEnum("project_integrity_mode", ["legacy", "strict"]);
 
 export const users = pgTable(
   "users",
@@ -125,6 +126,7 @@ export const projects = pgTable(
     name: varchar("name", { length: 120 }).notNull(),
     slug: varchar("slug", { length: 60 }).notNull(),
     description: text("description"),
+    integrityMode: projectIntegrityModeEnum("integrity_mode").notNull().default("strict"),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -149,6 +151,8 @@ export const records = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     key: varchar("key", { length: 120 }).notNull(),
     data: jsonb("data").notNull().default(sql`'{}'::jsonb`),
+    immutable: boolean("immutable").notNull().default(false),
+    strictIdentity: boolean("strict_identity").notNull().default(false),
     version: integer("version").notNull().default(1),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -171,6 +175,9 @@ export const records = pgTable(
       t.projectId,
       t.key,
     ),
+    strictTenantProjectKey: uniqueIndex("records_strict_project_key_uq")
+      .on(t.tenantId, t.projectId, t.key)
+      .where(sql`${t.strictIdentity} = true`),
   }),
 );
 
@@ -294,8 +301,12 @@ export const idempotencyKeys = pgTable(
     key: varchar("key", { length: 120 }).notNull(),
     method: varchar("method", { length: 10 }).notNull(),
     route: varchar("route", { length: 255 }).notNull(),
-    statusCode: integer("status_code").notNull(),
-    responseBody: jsonb("response_body").notNull(),
+    requestHash: varchar("request_hash", { length: 64 }),
+    state: varchar("state", { length: 20 }).notNull().default("completed"),
+    statusCode: integer("status_code"),
+    responseBody: jsonb("response_body"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

@@ -27,3 +27,5 @@ await store.records.create("project-doc:spinrec", {
 Use records for structured JSON state. Use files for images, screenshots, documents, Markdown, HTML exports, logs, transcripts, and any payload that should not live inline inside a JSON record. Store the returned `file.id` inside a record.
 
 `createSmartRecord()` stores small JSON inline and automatically uploads large JSON as a file, then creates a pointer record.
+
+For related changes that must commit together, use `store.records.atomic(operations, { idempotencyKey })`. Atomic operations commit records, audit rows, and durable events in one PostgreSQL transaction. Create append-only facts with `immutable: true`.
