@@ -171,7 +171,12 @@ export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, 
   const form = await readUploadForm(req);
   const file = form.get("file");
   const metaRaw = form.get("meta");
-  if (!isUploadedFileLike(file)) throw new ValidationError("Missing 'file' form field");
+  if (!isUploadedFileLike(file)) {
+    throw new ValidationError("Missing 'file' form field", {
+      receivedFields: [...form.keys()],
+      fileValueType: file === undefined ? "missing" : typeof file,
+    });
+  }
   if (file.size === 0) throw new ValidationError("Empty file");
   if (file.size > MAX_FILE_BYTES) throw new ValidationError("File too large");
   const contentType = file.type || "application/octet-stream";
