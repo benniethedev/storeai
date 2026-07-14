@@ -1,5 +1,5 @@
 import "server-only";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { handleError } from "./http.js";
 import {
   getUserSessionFromRequest,
@@ -27,6 +27,7 @@ export interface TenantRouteOptions {
   allowApiKey?: boolean;
   csrfExempt?: boolean;
   requiredScope?: ApiKeyScope;
+  eagerRequestBody?: boolean;
 }
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -38,6 +39,14 @@ export function tenantRoute<T = unknown>(opts: TenantRouteOptions, handler: Hand
     let status = 500;
     let ctx: TenantCtx | null = null;
     try {
+      if (opts.eagerRequestBody && MUTATING.has(req.method.toUpperCase())) {
+        const body = await req.arrayBuffer();
+        req = new NextRequest(req.url, {
+          method: req.method,
+          headers: req.headers,
+          body,
+        });
+      }
       ctx = await requireTenantContext(req, { allowApiKey: opts.allowApiKey });
       if (
         ctx.kind === "user" &&

@@ -185,7 +185,9 @@ function normalizeProjectId(value: unknown): string | null {
   return UUID.test(value) ? value : null;
 }
 
-export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, ctx }) => {
+export const POST = tenantRoute(
+  { requiredScope: "files:write", eagerRequestBody: true },
+  async ({ req, ctx }) => {
   const form = await readUploadForm(req);
   const file = form.get("file");
   const metaRaw = form.get("meta");
@@ -252,5 +254,6 @@ export const POST = tenantRoute({ requiredScope: "files:write" }, async ({ req, 
     payload: { name: row.originalName, size: row.sizeBytes, contentType: row.contentType },
   });
   const downloadUrl = appHostedFileDownloadUrl(row.id);
-  return ok({ ...row, downloadUrl });
-});
+    return ok({ ...row, downloadUrl });
+  },
+);
