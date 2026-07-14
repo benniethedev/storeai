@@ -104,6 +104,10 @@ async function parseMultipartForm(req: Request, boundary: string): Promise<Uploa
     const part = body.subarray(offset, next);
     const separator = part.indexOf(Buffer.from("\r\n\r\n"));
     if (separator < 0) {
+      console.warn("[file-upload] skipped multipart part without header separator", {
+        partBytes: part.byteLength,
+        prefix: part.subarray(0, 160).toString("latin1"),
+      });
       offset = next;
       continue;
     }
@@ -116,6 +120,9 @@ async function parseMultipartForm(req: Request, boundary: string): Promise<Uploa
     // canonical `file` field.
     const fieldName = disposition.name ?? (disposition.filename !== undefined ? "file" : undefined);
     if (!fieldName) {
+      console.warn("[file-upload] skipped unnamed multipart part", {
+        headers: Object.fromEntries(headers),
+      });
       offset = next;
       continue;
     }
