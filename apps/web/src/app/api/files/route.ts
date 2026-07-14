@@ -119,6 +119,12 @@ async function parseMultipartForm(req: Request, boundary: string): Promise<Uploa
     // accepts a single file, so a filename-bearing unnamed part is safely the
     // canonical `file` field.
     const fieldName = disposition.name ?? (disposition.filename !== undefined ? "file" : undefined);
+    console.warn("[file-upload] parsed multipart part", {
+      fieldName,
+      filename: disposition.filename,
+      partBytes: part.byteLength,
+      contentDisposition: headers.get("content-disposition"),
+    });
     if (!fieldName) {
       console.warn("[file-upload] skipped unnamed multipart part", {
         headers: Object.fromEntries(headers),
